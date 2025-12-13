@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "ast"
+version = "0.1.0"
+dependencies = [
+ "tokens",
+]
+
+[[package]]
 name = "lexer"
 version = "0.1.0"
 dependencies = [

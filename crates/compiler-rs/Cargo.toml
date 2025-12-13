@@ -2,8 +2,8 @@
 members = [
     "tokens",
     "lexer",
+    "ast",
     # "parser",  # Will be added in Phase 2
-    # "ast",  # Will be added in Phase 2
     # "semantics",  # Will be added in Phase 3
     # "types",  # Will be added in Phase 3
     # "symbols",  # Will be added in Phase 3
