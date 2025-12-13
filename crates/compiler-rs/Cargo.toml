@@ -3,12 +3,12 @@ members = [
     "tokens",
     "lexer",
     "ast",
-    # "parser",  # Will be added in Phase 2
+    "errors",
+    "parser",
     # "semantics",  # Will be added in Phase 3
     # "types",  # Will be added in Phase 3
     # "symbols",  # Will be added in Phase 3
     # "ir",  # Will be added in Phase 4
-    # "errors",  # Will be added in Phase 5
     # "diagnostics",  # Will be added in Phase 5
     # "backend-zealz80",  # Will be added in Phase 4
     # "object-zealz80",  # Will be added in Phase 4

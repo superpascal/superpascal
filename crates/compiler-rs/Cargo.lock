@@ -10,9 +10,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "errors"
+version = "0.1.0"
+dependencies = [
+ "tokens",
+]
+
+[[package]]
 name = "lexer"
 version = "0.1.0"
 dependencies = [
+ "tokens",
+]
+
+[[package]]
+name = "parser"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "errors",
+ "lexer",
  "tokens",
 ]
 
