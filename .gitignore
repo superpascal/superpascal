@@ -1,2 +1,16 @@
 nextest-junit.xml
 crates/compiler-rs/target
+
+# FreePascal build artifacts
+*.res
+*.o
+*.ppu
+*.a
+*.so
+*.dylib
+*.exe
+*.fpc_tokens.txt
+
+# Scraping scripts (not part of deliverable)
+docs/scripts/*
+!docs/scripts/.gitkeep

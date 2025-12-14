@@ -7,12 +7,12 @@ members = [
     "parser",
     "types",
     "symbols",
-    # "semantics",  # Will be added in Phase 3
-    # "ir",  # Will be added in Phase 4
+    "semantics",
+    "ir",
+    "runtime-spec",
+    "backends/backend-zealz80",
     # "diagnostics",  # Will be added in Phase 5
-    # "backend-zealz80",  # Will be added in Phase 4
-    # "object-zealz80",  # Will be added in Phase 4
-    # "runtime-spec",  # Will be added in Phase 4
+    # "objects/object-zealz80",  # Will be added in Phase 4
     # "driver",  # Will be added in Phase 5
 ]
 resolver = "3"

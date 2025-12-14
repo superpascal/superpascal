@@ -10,10 +10,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-zealz80"
+version = "0.1.0"
+dependencies = [
+ "ir",
+ "runtime-spec",
+ "tokens",
+ "types",
+]
+
+[[package]]
 name = "errors"
 version = "0.1.0"
 dependencies = [
  "tokens",
+]
+
+[[package]]
+name = "ir"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "tokens",
+ "types",
 ]
 
 [[package]]
@@ -31,6 +50,21 @@ dependencies = [
  "errors",
  "lexer",
  "tokens",
+]
+
+[[package]]
+name = "runtime-spec"
+version = "0.1.0"
+
+[[package]]
+name = "semantics"
+version = "0.1.0"
+dependencies = [
+ "ast",
+ "errors",
+ "symbols",
+ "tokens",
+ "types",
 ]
 
 [[package]]

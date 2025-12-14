@@ -1,0 +1,10 @@
+[package]
+name = "backend-zealz80"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ir = { path = "../../ir" }
+types = { path = "../../types" }
+runtime-spec = { path = "../../runtime-spec" }
+tokens = { path = "../../tokens" }

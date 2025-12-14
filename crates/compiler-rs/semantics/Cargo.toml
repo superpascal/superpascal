@@ -1,0 +1,11 @@
+[package]
+name = "semantics"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ast = { path = "../ast" }
+types = { path = "../types" }
+symbols = { path = "../symbols" }
+errors = { path = "../errors" }
+tokens = { path = "../tokens" }
