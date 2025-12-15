@@ -112,6 +112,59 @@ The ABI ensures that code compiled separately can interoperate correctly.
 
 **Platform-specific:** Size threshold, buffer allocation strategy
 
+### 3.3 Process Activation Records
+
+**Concept:** Minimal context for cooperative multitasking.
+
+**Historical SuperPascal Layout (Minimal):**
+```
+Process Activation Record (3 words):
+[offset -2] = Program Counter (PC)
+[offset -1] = Block Pointer (BP)
+[offset  0] = Link to next process in ready queue
+```
+
+**Characteristics:**
+- Minimal overhead: only 3 words per process
+- Suitable for single-core systems
+- Fast context switching
+- No register save/restore (all state in memory)
+
+**Platform-Specific:**
+- **Z80/6502:** Use minimal layout (3 words)
+- **Raspberry Pi:** Can use minimal or full stackful (May-style)
+
+**Ready Queue:**
+- Processes linked via activation records
+- FIFO scheduling (deterministic)
+- Deadlock detection when queue empty
+
+### 3.4 Full Stackful Coroutines (May-Style)
+
+**Concept:** Complete stack for each coroutine (modern platforms).
+
+**Layout:**
+```
+Coroutine Stack:
+- Full function call stack
+- All local variables
+- Saved registers (platform-specific)
+- Return addresses
+- Exception frames (if applicable)
+```
+
+**Characteristics:**
+- Higher memory overhead (~1-8 KB per coroutine)
+- Complete isolation between coroutines
+- Supports deep call stacks
+- Platform-specific register save/restore
+
+**Platform-Specific:**
+- **Raspberry Pi:** Use full stackful coroutines
+- **Z80/6502:** Use minimal activation records only
+
+**Note:** May provides extensive assembly implementations for stack frame manipulation. These should be referenced for platform-specific implementations.
+
 ---
 
 ## 4. Data Layout Principles
@@ -144,6 +197,30 @@ The ABI ensures that code compiled separately can interoperate correctly.
 - Bounds may be stored (for bounds checking)
 
 **Platform-specific:** Element alignment, bounds storage strategy
+
+### 4.4 Process Stack Frame Layout
+
+**Minimal Layout (SuperPascal):**
+```
+Stack Frame (per process):
+[SP-2] = Program Counter
+[SP-1] = Block Pointer  
+[SP]   = Link to next process
+```
+
+**Full Layout (May-Style):**
+```
+Stack Frame (per coroutine):
+[SP]   = Saved registers (platform-specific)
+[SP+N] = Local variables
+[SP+M] = Function parameters
+[SP+P] = Return addresses
+```
+
+**Platform-Specific:**
+- Document exact layout for each platform
+- Reference May's assembly code for modern platforms
+- Provide assembly examples for context switching
 
 ---
 
@@ -276,7 +353,97 @@ Key differences between platforms:
 
 ---
 
-## 10. ABI Design Principles
+## 10. Context Switching Conventions
+
+### 10.1 Minimal Context Switching (SuperPascal-Style)
+
+**Process:**
+1. Save current PC, BP to stack
+2. Add current stack pointer to ready queue
+3. Select next process from ready queue
+4. Restore PC, BP from selected process stack
+5. Continue execution at restored PC
+
+**Assembly Sequence (Conceptual):**
+```assembly
+; Save current context
+push PC
+push BP
+mov [ready_queue], SP  ; Add to ready queue
+
+; Select next process
+mov SP, [ready_queue]    ; Get next process
+pop BP                   ; Restore block pointer
+pop PC                   ; Restore program counter
+ret                      ; Continue execution
+```
+
+**Overhead:** ~10-20 instructions per context switch
+
+**Platform-Specific:**
+- **Z80:** Use minimal context (3 words: PC, BP, Link)
+- **6502:** Use minimal context (3 words: PC, BP, Link)
+- **Foenix (65C816):** Can use minimal or full stackful
+
+### 10.2 Full Stackful Context Switching (May-Style)
+
+**Process:**
+1. Save all callee-saved registers
+2. Save stack pointer
+3. Switch to new coroutine stack
+4. Restore all callee-saved registers
+5. Restore stack pointer
+6. Continue execution
+
+**Assembly Sequence (Platform-Specific):**
+- **ARM (Raspberry Pi):** Save/restore r4-r11, lr, sp
+- **x86-64:** Save/restore rbx, rbp, r12-r15
+- **Z80:** Not applicable (use minimal context only)
+
+**Overhead:** ~50-100 instructions per context switch (but supports deep stacks)
+
+**Platform-Specific:**
+- **Raspberry Pi:** Use full stackful coroutines
+- **Modern platforms:** Reference May's assembly implementations
+
+### 10.3 Platform-Specific Recommendations
+
+| Platform | Context Type | Reason |
+|----------|--------------|--------|
+| Z80 | Minimal (3 words) | Limited memory, simple architecture |
+| 6502 | Minimal (3 words) | Limited memory, simple architecture |
+| Raspberry Pi | Full stackful | Ample memory, modern architecture |
+| Foenix (65C816) | Minimal or Full | Depends on application requirements |
+
+**Note:** May's assembly implementations provide excellent reference for full stackful context switching on modern platforms.
+
+### 10.4 Stack Frame Layout for Processes
+
+**Minimal Layout (SuperPascal):**
+```
+Stack Frame (per process):
+[SP-2] = Program Counter
+[SP-1] = Block Pointer  
+[SP]   = Link to next process
+```
+
+**Full Layout (May-Style):**
+```
+Stack Frame (per coroutine):
+[SP]   = Saved registers (platform-specific)
+[SP+N] = Local variables
+[SP+M] = Function parameters
+[SP+P] = Return addresses
+```
+
+**Platform-Specific:**
+- Document exact layout for each platform
+- Reference May's assembly code for modern platforms
+- Provide assembly examples for context switching
+
+---
+
+## 11. ABI Design Principles
 
 ### 10.1 Efficiency
 

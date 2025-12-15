@@ -136,6 +136,136 @@ These types are available in Tier 2 but are not taught until after Tier 1 master
 
 **Educational Note:** Tier 1 students learn `string` (shortstring) which is sufficient for most programs. Tier 2 students learn when and why to use `ansistring` or `unicodestring` for advanced string manipulation.
 
+### 2.5 Channel Types
+
+Channels provide typed message passing between concurrent processes.
+
+#### Synchronous Channels
+
+**Syntax:** `channel[type1, type2, ...]`
+
+**Characteristics:**
+- Synchronous rendezvous (both sender and receiver must be ready)
+- Unbuffered (direct handoff)
+- Deterministic execution
+- Zero-copy message transfer (stack-to-stack)
+
+**Example:**
+```pascal
+type
+  IntChannel = channel[integer];
+  MultiChannel = channel[boolean, integer];
+  
+var c: IntChannel;
+var value: integer;
+
+open(c);
+send(c, 42);        // Blocks until receiver ready
+receive(c, value);  // Blocks until sender ready
+```
+
+**Rules:**
+- Channel types are nominal (by name)
+- Two channels with same type signature are different types
+- Channels must be explicitly opened before use
+- Synchronous channels guarantee deterministic execution order
+
+#### Asynchronous Channels
+
+**Syntax:** `async channel[type1, type2, ...]`
+
+**Characteristics:**
+- Asynchronous (non-blocking send if buffer available)
+- Buffered (optional capacity)
+- Non-deterministic execution
+- Heap-allocated messages
+
+**Example:**
+```pascal
+type
+  AsyncIntChannel = async channel[integer][10];  // Buffered, capacity 10
+  
+var c: AsyncIntChannel;
+var value: integer;
+
+open(c);
+send(c, 42);        // Non-blocking if buffer space available
+receive(c, value);  // Blocks if buffer empty
+```
+
+**Rules:**
+- Buffer capacity specified at compile time
+- Send blocks only if buffer full
+- Receive blocks only if buffer empty
+- Higher throughput than unbuffered channels
+- Execution order is non-deterministic
+
+#### Buffered Channels
+
+**Syntax:** `channel[type][capacity]` or `async channel[type][capacity]`
+
+**Characteristics:**
+- Buffer capacity specified at compile time
+- Send blocks only if buffer full
+- Receive blocks only if buffer empty
+- Higher throughput than unbuffered
+
+**Example:**
+```pascal
+type
+  BufferedChannel = channel[integer][5];  // Synchronous, capacity 5
+  AsyncBuffered = async channel[string][10];  // Asynchronous, capacity 10
+  
+var c: BufferedChannel;
+open(c);
+// Can send up to 5 messages without blocking (synchronous)
+// or up to 10 messages without blocking (asynchronous)
+```
+
+**Rules:**
+- Capacity must be compile-time constant
+- Buffer stores messages in FIFO order
+- Synchronous buffered: rendezvous if buffer empty/full
+- Asynchronous buffered: non-blocking if space available
+
+#### Channel Type Compatibility
+
+- Channels are **nominal types** (by name)
+- Two channels with same type signature are **different types**
+- Channel types cannot be assigned or compared
+- Channels must be explicitly opened before use
+- Channel types are not compatible with other types
+- No implicit conversions between channel types
+
+#### Multi-Type Channels
+
+Channels can accept multiple message types:
+
+```pascal
+type
+  MixedChannel = channel[boolean, integer, string];
+  
+var c: MixedChannel;
+var b: boolean;
+var i: integer;
+var s: string;
+
+open(c);
+send(c, true);      // Send boolean
+send(c, 42);        // Send integer
+send(c, 'Hello');   // Send string
+
+receive(c, b);      // Receive boolean
+receive(c, i);      // Receive integer
+receive(c, s);      // Receive string
+```
+
+**Rules:**
+- Type of sent value must match one of channel's allowed types
+- Type of receive variable must match one of channel's allowed types
+- Type checking performed at compile time
+- Runtime type matching for multi-type channels
+
 ---
 
 ## 3. Ordinal Types

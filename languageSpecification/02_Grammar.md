@@ -180,6 +180,7 @@ type-spec ::= simple-type
             | pointer-type
             | class-type
             | string-type
+            | channel-type
 ```
 
 ### 4.2 Simple Types
@@ -493,7 +494,35 @@ type
 - Maximum length: 255 characters
 - Length stored in first byte (0-255)
 
-### 4.11 Class Types
+### 4.11 Channel Types
+
+```
+channel-type ::= "channel" "[" type-list "]" buffer-size?
+                | "async" "channel" "[" type-list "]" buffer-size?
+type-list ::= type-spec ("," type-spec)*
+buffer-size ::= "[" const-expr "]"  // Optional buffering capacity
+```
+
+**Examples:**
+```pascal
+type
+  IntChannel = channel[integer];                    // Synchronous, unbuffered
+  MultiChannel = channel[boolean, integer];         // Synchronous, multiple types
+  BufferedChannel = channel[integer][10];          // Synchronous, buffered (capacity 10)
+  AsyncChannel = async channel[integer];           // Asynchronous, unbuffered
+  AsyncBuffered = async channel[string][5];        // Asynchronous, buffered
+```
+
+**Rules:**
+- `channel` = synchronous rendezvous (SuperPascal-style)
+- `async channel` = asynchronous buffered (May-style)
+- Buffer size is optional (default: unbuffered)
+- Type list specifies allowed message types
+- Channels must be opened before use
+- Synchronous channels: both sender and receiver must be ready (rendezvous)
+- Asynchronous channels: non-blocking send if buffer space available
+
+### 4.12 Class Types
 
 ```
 class-type ::= "class" class-ancestor? class-body "end"
@@ -599,6 +628,9 @@ simple-stmt ::= assign-stmt
               | call-stmt
               | goto-stmt
               | intrinsic-stmt
+              | channel-open-stmt
+              | channel-send-stmt
+              | channel-receive-stmt
 ```
 
 ### 6.3 Assignment
@@ -662,6 +694,8 @@ structured-stmt ::= if-stmt
                   | for-stmt
                   | case-stmt
                   | try-stmt
+                  | parallel-stmt
+                  | forall-stmt
                   | block
 ```
 
@@ -804,6 +838,113 @@ statement-seq ::= statement (";" statement)*
 ```
 
 **Note**: Final semicolon before `end` is optional.
+
+### 6.14 Parallel Statement
+
+```
+parallel-stmt ::= "parallel" process-list "endparallel"
+process-list ::= process-item ("|" process-item)*
+process-item ::= "process" statement-seq "endprocess"
+```
+
+**Examples:**
+```pascal
+parallel
+  process
+    ComputeA;
+  endprocess |
+  process
+    ComputeB;
+  endprocess
+endparallel
+```
+
+**Rules:**
+- Processes execute concurrently
+- All processes must complete before `endparallel`
+- Processes cannot share mutable state (compile-time checked)
+- Processes can share read-only data
+- Process separator is `|` (pipe character)
+
+### 6.15 Forall Statement
+
+```
+forall-stmt ::= "forall" ident ":=" expr "to" expr "do" statement
+```
+
+**Examples:**
+```pascal
+forall i := 1 to 100 do
+  Process(i);
+
+forall i := 0 to n-1 do
+  array[i] := array[i] * 2;
+```
+
+**Rules:**
+- Creates dynamic number of processes (one per iteration)
+- Loop variable is read-only in body
+- All processes execute concurrently
+- All processes must complete before continuing
+- Processes cannot share mutable state (compile-time checked)
+- Initial and final expressions evaluated once
+
+### 6.16 Channel Operations
+
+#### 6.16.1 Open Channel
+
+```
+channel-open-stmt ::= "open" "(" variable ")"
+```
+
+**Example:**
+```pascal
+var c: channel[integer];
+open(c);
+```
+
+**Rules:**
+- Must be called before using channel
+- Channel can only be opened once
+- Opening an already-open channel is an error
+
+#### 6.16.2 Send Message
+
+```
+channel-send-stmt ::= "send" "(" variable "," expr ")"
+```
+
+**Example:**
+```pascal
+var c: channel[integer];
+send(c, 42);
+```
+
+**Rules:**
+- Expression type must match channel type
+- For synchronous channels: blocks until receiver ready
+- For asynchronous channels: non-blocking if buffer space available
+- Channel must be open
+
+#### 6.16.3 Receive Message
+
+```
+channel-receive-stmt ::= "receive" "(" variable "," variable ")"
+```
+
+**Example:**
+```pascal
+var c: channel[integer];
+var value: integer;
+receive(c, value);
+```
+
+**Rules:**
+- Variable type must match channel type
+- For synchronous channels: blocks until sender ready
+- For asynchronous channels: blocks if buffer empty
+- Message is copied to variable
+- Channel must be open
 
 ---
 
