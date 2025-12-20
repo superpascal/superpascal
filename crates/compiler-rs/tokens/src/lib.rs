@@ -98,6 +98,7 @@ pub enum TokenKind {
     KwUntil,
     KwVar,
     KwWhile,
+    KwWith,
     KwWord,
 
     // ===== Keywords (Tier 2: Units) =====
@@ -257,6 +258,7 @@ impl Token {
                 | TokenKind::KwUntil
                 | TokenKind::KwVar
                 | TokenKind::KwWhile
+                | TokenKind::KwWith
                 | TokenKind::KwWord
                 | TokenKind::KwImplementation
                 | TokenKind::KwInterface
@@ -503,6 +505,7 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "until") { return Some(TokenKind::KwUntil); }
     if eq_ignore_ascii_case(s, "var") { return Some(TokenKind::KwVar); }
     if eq_ignore_ascii_case(s, "while") { return Some(TokenKind::KwWhile); }
+    if eq_ignore_ascii_case(s, "with") { return Some(TokenKind::KwWith); }
     if eq_ignore_ascii_case(s, "word") { return Some(TokenKind::KwWord); }
     // Tier 2: Unit keywords
     if eq_ignore_ascii_case(s, "implementation") { return Some(TokenKind::KwImplementation); }

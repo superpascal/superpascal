@@ -25,6 +25,11 @@ impl super::Parser {
             self.parse_try_statement()
         } else if self.check(&TokenKind::KwRaise) {
             self.parse_raise_statement()
+        } else if self.check(&TokenKind::KwWith) {
+            self.parse_with_statement()
+        } else if self.check(&TokenKind::KwBegin) {
+            // Compound statement: BEGIN statements END
+            self.parse_compound_statement()
         } else if matches!(self.current().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
             // Could be assignment or procedure call
             // Check if it's an assignment by looking ahead for :=
@@ -534,6 +539,69 @@ impl super::Parser {
             span,
         }))
     }
+
+    /// Parse with statement: WITH record_expr { , record_expr } DO statement
+    fn parse_with_statement(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwWith, "WITH")?;
+
+        // Parse record expressions (can be multiple, separated by commas)
+        let mut records = vec![];
+        loop {
+            records.push(self.parse_expression()?);
+            if !self.check(&TokenKind::Comma) {
+                break;
+            }
+            self.advance()?; // consume comma
+        }
+
+        self.consume(TokenKind::KwDo, "DO")?;
+        let statement = self.parse_statement()?;
+
+        let span = start_span.merge(statement.span());
+        Ok(Node::WithStmt(ast::WithStmt {
+            records,
+            statement: Box::new(statement),
+            span,
+        }))
+    }
+
+    /// Parse compound statement: BEGIN statements END
+    fn parse_compound_statement(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwBegin, "BEGIN")?;
+
+        // Parse statements
+        let mut statements = vec![];
+        while !self.check(&TokenKind::KwEnd) {
+            statements.push(self.parse_statement()?);
+            // Optional semicolon between statements
+            if self.check(&TokenKind::Semicolon) {
+                self.advance()?;
+            }
+        }
+
+        let end_token = self.consume(TokenKind::KwEnd, "END")?;
+        let span = start_span.merge(end_token.span);
+
+        Ok(Node::Block(ast::Block {
+            const_decls: vec![],
+            type_decls: vec![],
+            var_decls: vec![],
+            proc_decls: vec![],
+            func_decls: vec![],
+            statements,
+            span,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -1028,6 +1096,165 @@ mod tests {
                     // Check first handler has variable
                     assert_eq!(try_stmt.exception_handlers[0].variable.as_ref().unwrap(), "e");
                     assert_eq!(try_stmt.exception_handlers[1].variable.as_ref().unwrap(), "e");
+                }
+            }
+        }
+    }
+
+    // ===== With Statement Tests =====
+
+    #[test]
+    fn test_parse_with_single_record() {
+        let source = r#"
+            program Test;
+            type Rec = record
+                x: integer;
+                y: integer;
+            end;
+            var r: Rec;
+            begin
+                with r do
+                    x := 10;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::WithStmt(with_stmt) = &block.statements[0] {
+                    assert_eq!(with_stmt.records.len(), 1);
+                    if let Node::IdentExpr(ident) = &with_stmt.records[0] {
+                        assert_eq!(ident.name, "r");
+                    } else {
+                        panic!("Expected IdentExpr in with record");
+                    }
+                    if let Node::AssignStmt(assign) = with_stmt.statement.as_ref() {
+                        if let Node::IdentExpr(ident) = assign.target.as_ref() {
+                            assert_eq!(ident.name, "x");
+                        } else {
+                            panic!("Expected IdentExpr in assignment target");
+                        }
+                    } else {
+                        panic!("Expected AssignStmt in with statement");
+                    }
+                } else {
+                    panic!("Expected WithStmt");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_with_multiple_records() {
+        let source = r#"
+            program Test;
+            type Rec1 = record
+                x: integer;
+            end;
+            type Rec2 = record
+                y: integer;
+            end;
+            var r1: Rec1;
+            var r2: Rec2;
+            begin
+                with r1, r2 do
+                    x := 10;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::WithStmt(with_stmt) = &block.statements[0] {
+                    assert_eq!(with_stmt.records.len(), 2);
+                    if let Node::IdentExpr(ident) = &with_stmt.records[0] {
+                        assert_eq!(ident.name, "r1");
+                    } else {
+                        panic!("Expected IdentExpr for first record");
+                    }
+                    if let Node::IdentExpr(ident) = &with_stmt.records[1] {
+                        assert_eq!(ident.name, "r2");
+                    } else {
+                        panic!("Expected IdentExpr for second record");
+                    }
+                } else {
+                    panic!("Expected WithStmt");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_with_nested_statement() {
+        let source = r#"
+            program Test;
+            type Rec = record
+                x: integer;
+            end;
+            var r: Rec;
+            begin
+                with r do begin
+                    x := 10;
+                    writeln(x);
+                end;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::WithStmt(with_stmt) = &block.statements[0] {
+                    if let Node::Block(inner_block) = with_stmt.statement.as_ref() {
+                        assert_eq!(inner_block.statements.len(), 2);
+                    } else {
+                        panic!("Expected Block in with statement");
+                    }
+                } else {
+                    panic!("Expected WithStmt");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_with_field_access() {
+        let source = r#"
+            program Test;
+            type Rec = record
+                x: integer;
+            end;
+            var r: Rec;
+            begin
+                with r do
+                    writeln(x);
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::WithStmt(with_stmt) = &block.statements[0] {
+                    if let Node::CallStmt(call) = with_stmt.statement.as_ref() {
+                        assert_eq!(call.name, "writeln");
+                        assert_eq!(call.args.len(), 1);
+                        if let Node::IdentExpr(ident) = &call.args[0] {
+                            assert_eq!(ident.name, "x");
+                        } else {
+                            panic!("Expected IdentExpr in call argument");
+                        }
+                    } else {
+                        panic!("Expected CallStmt in with statement");
+                    }
+                } else {
+                    panic!("Expected WithStmt");
                 }
             }
         }

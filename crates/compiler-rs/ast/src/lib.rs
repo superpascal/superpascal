@@ -35,6 +35,7 @@ pub enum Node {
     CallStmt(CallStmt),
     TryStmt(TryStmt),
     RaiseStmt(RaiseStmt),
+    WithStmt(WithStmt),
 
     // ===== Expressions =====
     BinaryExpr(BinaryExpr),
@@ -311,6 +312,14 @@ pub struct RaiseStmt {
     pub span: Span,
 }
 
+/// With statement: WITH record_expr { , record_expr } DO statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct WithStmt {
+    pub records: Vec<Node>,  // Record expressions (can be multiple)
+    pub statement: Box<Node>, // Statement to execute
+    pub span: Span,
+}
+
 /// Binary expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryExpr {
@@ -548,6 +557,7 @@ impl Node {
             Node::CallStmt(c) => c.span,
             Node::TryStmt(t) => t.span,
             Node::RaiseStmt(r) => r.span,
+            Node::WithStmt(w) => w.span,
             Node::BinaryExpr(b) => b.span,
             Node::UnaryExpr(u) => u.span,
             Node::LiteralExpr(l) => l.span,
