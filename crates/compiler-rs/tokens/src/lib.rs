@@ -89,6 +89,7 @@ pub enum TokenKind {
     KwRecord,
     KwRepeat,
     KwSet,
+    KwString,
     KwStruct,  // SuperPascal extension
     KwThen,
     KwTo,
@@ -247,6 +248,7 @@ impl Token {
                 | TokenKind::KwRecord
                 | TokenKind::KwRepeat
                 | TokenKind::KwSet
+                | TokenKind::KwString
                 | TokenKind::KwStruct
                 | TokenKind::KwThen
                 | TokenKind::KwTo
@@ -492,6 +494,7 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "record") { return Some(TokenKind::KwRecord); }
     if eq_ignore_ascii_case(s, "repeat") { return Some(TokenKind::KwRepeat); }
     if eq_ignore_ascii_case(s, "set") { return Some(TokenKind::KwSet); }
+    if eq_ignore_ascii_case(s, "string") { return Some(TokenKind::KwString); }
     if eq_ignore_ascii_case(s, "struct") { return Some(TokenKind::KwStruct); }
     if eq_ignore_ascii_case(s, "then") { return Some(TokenKind::KwThen); }
     if eq_ignore_ascii_case(s, "to") { return Some(TokenKind::KwTo); }

@@ -53,6 +53,7 @@ pub enum Node {
     PointerType(PointerType),
     ClassType(ClassType),
     SetType(SetType),
+    StringType(StringType),
     
     // ===== Set Literals =====
     SetLiteral(SetLiteral),
@@ -460,6 +461,13 @@ pub struct SetType {
     pub span: Span,
 }
 
+/// String type (STRING or STRING[n])
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringType {
+    pub length: Option<Box<Node>>,  // Optional length expression (for STRING[n])
+    pub span: Span,
+}
+
 /// Set literal ([element1, element2, ...] or [element1..element2])
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetLiteral {
@@ -554,6 +562,7 @@ impl Node {
             Node::PointerType(p) => p.span,
             Node::ClassType(c) => c.span,
             Node::SetType(s) => s.span,
+            Node::StringType(s) => s.span,
             Node::SetLiteral(s) => s.span,
         }
     }

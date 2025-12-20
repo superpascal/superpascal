@@ -48,6 +48,26 @@ impl super::Parser {
                 element_type: Box::new(element_type),
                 span,
             }))
+        } else if self.check(&TokenKind::KwString) {
+            // STRING or STRING[n]
+            self.advance()?; // consume STRING
+            let length = if self.check(&TokenKind::LeftBracket) {
+                self.advance()?; // consume [
+                let length_expr = self.parse_expression()?;
+                self.consume(TokenKind::RightBracket, "]")?;
+                Some(Box::new(length_expr))
+            } else {
+                None
+            };
+            let span = if let Some(ref len_expr) = length {
+                start_span.merge(len_expr.span())
+            } else {
+                start_span
+            };
+            Ok(Node::StringType(ast::StringType {
+                length,
+                span,
+            }))
         } else if self.check(&TokenKind::KwRecord) {
             self.advance()?;
             let mut fields = vec![];
@@ -445,6 +465,102 @@ mod tests {
                         }
                     } else {
                         panic!("Expected SetType");
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== String Type Tests =====
+
+    #[test]
+    fn test_parse_string_type() {
+        let source = r#"
+            program Test;
+            var s: string;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::VarDecl(var_decl) = &block.var_decls[0] {
+                    if let Node::StringType(string_type) = var_decl.type_expr.as_ref() {
+                        assert!(string_type.length.is_none(), "Expected unbounded string");
+                    } else {
+                        panic!("Expected StringType");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_string_type_fixed_length() {
+        let source = r#"
+            program Test;
+            var s: string[80];
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::VarDecl(var_decl) = &block.var_decls[0] {
+                    if let Node::StringType(string_type) = var_decl.type_expr.as_ref() {
+                        assert!(string_type.length.is_some(), "Expected fixed-length string");
+                        if let Some(length_expr) = &string_type.length {
+                            if let Node::LiteralExpr(lit) = length_expr.as_ref() {
+                                if let ast::LiteralValue::Integer(v) = lit.value {
+                                    assert_eq!(v, 80);
+                                } else {
+                                    panic!("Expected Integer literal for string length");
+                                }
+                            } else {
+                                panic!("Expected LiteralExpr for string length");
+                            }
+                        }
+                    } else {
+                        panic!("Expected StringType");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_string_type_with_expression() {
+        let source = r#"
+            program Test;
+            const MaxLen = 100;
+            var s: string[MaxLen];
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::VarDecl(var_decl) = &block.var_decls[0] {
+                    if let Node::StringType(string_type) = var_decl.type_expr.as_ref() {
+                        assert!(string_type.length.is_some(), "Expected fixed-length string");
+                        if let Some(length_expr) = &string_type.length {
+                            if let Node::IdentExpr(ident) = length_expr.as_ref() {
+                                assert_eq!(ident.name, "MaxLen");
+                            } else {
+                                panic!("Expected IdentExpr for string length");
+                            }
+                        }
+                    } else {
+                        panic!("Expected StringType");
                     }
                 }
             }
