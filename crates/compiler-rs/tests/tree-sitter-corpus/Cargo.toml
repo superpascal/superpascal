@@ -1,0 +1,24 @@
+[package]
+name = "tree-sitter-corpus"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "corpus-test-generator"
+path = "src/bin/corpus-test-generator.rs"
+
+[[bin]]
+name = "corpus-validator"
+path = "src/bin/corpus-validator.rs"
+
+[[bin]]
+name = "sync-corpus"
+path = "src/bin/sync-corpus.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+compiler-rs = { path = "../.." }

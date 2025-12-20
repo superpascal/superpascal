@@ -27,6 +27,8 @@ pub enum Node {
     CaseStmt(CaseStmt),
     AssignStmt(AssignStmt),
     CallStmt(CallStmt),
+    TryStmt(TryStmt),
+    RaiseStmt(RaiseStmt),
 
     // ===== Expressions =====
     BinaryExpr(BinaryExpr),
@@ -199,6 +201,33 @@ pub struct CallStmt {
     pub span: Span,
 }
 
+/// Try statement: TRY ... EXCEPT/FINALLY ... END
+#[derive(Debug, Clone, PartialEq)]
+pub struct TryStmt {
+    pub try_block: Vec<Node>,        // Statements in try block
+    pub except_block: Option<Vec<Node>>, // Statements in except block (if EXCEPT)
+    pub finally_block: Option<Vec<Node>>, // Statements in finally block (if FINALLY)
+    pub exception_handlers: Vec<ExceptionHandler>, // Exception handlers (ON ... DO)
+    pub exception_else: Option<Box<Node>>, // Else clause in exception handlers
+    pub span: Span,
+}
+
+/// Exception handler: ON exception_type DO statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExceptionHandler {
+    pub variable: Option<String>,    // Optional variable name
+    pub exception_type: Box<Node>,    // Exception type (type reference)
+    pub handler: Box<Node>,           // Handler statement
+    pub span: Span,
+}
+
+/// Raise statement: RAISE [exception]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RaiseStmt {
+    pub exception: Option<Box<Node>>, // Optional exception expression
+    pub span: Span,
+}
+
 /// Binary expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryExpr {
@@ -345,6 +374,8 @@ impl Node {
             Node::CaseStmt(c) => c.span,
             Node::AssignStmt(a) => a.span,
             Node::CallStmt(c) => c.span,
+            Node::TryStmt(t) => t.span,
+            Node::RaiseStmt(r) => r.span,
             Node::BinaryExpr(b) => b.span,
             Node::UnaryExpr(u) => u.span,
             Node::LiteralExpr(l) => l.span,

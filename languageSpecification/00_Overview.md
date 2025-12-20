@@ -48,12 +48,15 @@ Complete context-free grammar in Extended Backus-Naur Form (EBNF):
 - Statement syntax
 - Expression syntax with operator precedence
 - Exception handling syntax
+- **Execution mode directives** - `{$EXECMODE BAREMETAL}` and `{$EXECMODE USER}`
+- **OSPointer syntax** - Capability pointer types and indexing
 - SuperPascal-specific extensions (Tilemap DSL, intrinsics)
 
 ### [03_TypeSystem.md](./03_TypeSystem.md)
 Comprehensive type system specification:
 - Primitive types (integer, byte, word, boolean, char, string)
 - Composite types (arrays, records, sets, pointers)
+- **OSPointer[T] types** - Capability pointers for safe memory access
 - Class types (Object Pascal subset)
 - Type compatibility and equivalence rules
 - Type conversions (implicit and explicit)
@@ -161,6 +164,15 @@ Complete memory management strategy:
 - **Memory safety rules** - Null safety, double-free prevention, dangling pointer prevention
 - **Memory leak prevention** - Best practices and patterns
 - **Complete strategy** - All facilities needed for the hybrid model (value + reference types)
+
+### [17_CapabilityBasedMemory.md](./17_CapabilityBasedMemory.md)
+Capability-based memory model for platforms without MMU:
+- **OSPointer[T] type** - Opaque capability pointers for safe memory access
+- **Two-tier pointer model** - Bare metal (raw pointers) vs User mode (capability pointers)
+- **Execution mode system** - `{$EXECMODE BAREMETAL}` vs `{$EXECMODE USER}`
+- **Runtime safety** - Bounds checking, permission checking, capability validation
+- **Platform-specific implementations** - 65C816 (PascalOS), Z80, and others
+- **Memory management API** - BankAlloc, BankFree, BankGrant, BankRevoke
 
 ### [09_GameEngine_Concepts.md](./09_GameEngine_Concepts.md)
 General Game Engine concepts (platform-agnostic):

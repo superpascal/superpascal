@@ -1,0 +1,11 @@
+# Generated test files
+generated_tests/
+
+# Coverage reports
+coverage_report.json
+*.json
+
+# Temporary files
+*.tmp
+*.bak
+

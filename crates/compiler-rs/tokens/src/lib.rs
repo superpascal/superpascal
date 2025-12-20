@@ -121,6 +121,7 @@ pub enum TokenKind {
     KwFinally,
     KwRaise,
     KwTry,
+    KwOn,      // ON exception_type DO (exception handler)
 
     // ===== Keywords (Special) =====
     KwNil,
@@ -260,6 +261,7 @@ impl Token {
                 | TokenKind::KwFinally
                 | TokenKind::KwRaise
                 | TokenKind::KwTry
+                | TokenKind::KwOn
                 | TokenKind::KwNil
                 | TokenKind::KwSelf
                 | TokenKind::KwInherited
@@ -497,6 +499,7 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "finally") { return Some(TokenKind::KwFinally); }
     if eq_ignore_ascii_case(s, "raise") { return Some(TokenKind::KwRaise); }
     if eq_ignore_ascii_case(s, "try") { return Some(TokenKind::KwTry); }
+    if eq_ignore_ascii_case(s, "on") { return Some(TokenKind::KwOn); }
     // Special
     if eq_ignore_ascii_case(s, "nil") { return Some(TokenKind::KwNil); }
     if eq_ignore_ascii_case(s, "self") { return Some(TokenKind::KwSelf); }

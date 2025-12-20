@@ -178,6 +178,7 @@ type-spec ::= simple-type
             | struct-type
             | set-type
             | pointer-type
+            | ospointer-type
             | class-type
             | string-type
             | channel-type
@@ -473,10 +474,61 @@ type
 **Rules:**
 - Can point to any type
 - `nil` is the null pointer value
-- Pointer arithmetic is allowed (C-style, SuperPascal extension)
+- **Mode Restrictions:**
+  - **BAREMETAL mode:** ✅ Allowed
+  - **USER mode:** ❌ Forbidden (use OSPointer[T] instead)
+- Pointer arithmetic allowed in BAREMETAL mode only
 - Dereferencing `nil` is undefined behavior
 
-### 4.10 String Type
+**Note:** Raw pointers are restricted to bare metal mode for safety. User mode programs must use OSPointer[T] capability pointers.
+
+### 4.10 OSPointer Types (Capability Pointers)
+
+```
+ospointer-type ::= "OSPointer" "[" type-spec "]"
+```
+
+**Examples:**
+```pascal
+type
+  IntBuffer = OSPointer[integer];
+  ByteBuffer = OSPointer[byte];
+  StringBuffer = OSPointer[char];
+```
+
+**Rules:**
+- **Mode Restrictions:**
+  - **USER mode:** ✅ Available
+  - **BAREMETAL mode:** ❌ Not available (OS feature)
+- Opaque capability type managed by OS
+- Cannot be cast to/from raw pointers or integers
+- Only obtainable via OS calls (BankAlloc, etc.)
+- Array indexing `p[i]` is the only access method
+- Bounds and permissions checked at runtime
+
+**Access Syntax:**
+```
+ospointer-access ::= ident "[" expr "]"
+```
+
+**Example:**
+```pascal
+var buf: OSPointer[Byte];
+var value: Byte;
+
+buf := BankAlloc(1024);  // Get from OS
+value := buf[5];          // ✅ Allowed: checked access
+buf[5] := 42;            // ✅ Allowed: checked write
+// buf^ := 42;           // ❌ Forbidden: no dereference
+// buf := buf + 5;       // ❌ Forbidden: no arithmetic
+```
+
+**Internal Implementation:**
+- OSPointer is implemented using pointer arithmetic internally
+- User code cannot access raw pointer operations
+- Compiler generates checked access code for `p[i]`
+
+### 4.11 String Type
 
 ```
 string-type ::= "string" | "string" "[" integer-literal "]"
@@ -494,7 +546,7 @@ type
 - Maximum length: 255 characters
 - Length stored in first byte (0-255)
 
-### 4.11 Channel Types
+### 4.12 Channel Types
 
 ```
 channel-type ::= "channel" "[" type-list "]" buffer-size?
@@ -522,7 +574,7 @@ type
 - Synchronous channels: both sender and receiver must be ready (rendezvous)
 - Asynchronous channels: non-blocking send if buffer space available
 
-### 4.12 Class Types
+### 4.13 Class Types
 
 ```
 class-type ::= "class" class-ancestor? class-body "end"
@@ -1039,7 +1091,13 @@ unary-op ::= "not" | "-" | "+" | "@"
 **Operands:**
 - `not`: boolean (logical NOT)
 - `-`, `+`: numeric (unary minus/plus)
-- `@`: any variable (address-of, returns pointer)
+- `@`: any variable (address-of, returns raw pointer)
+
+**Mode Restrictions for `@` operator:**
+- **BAREMETAL mode:** ✅ Allowed (yields raw pointer)
+- **USER mode:** ❌ Forbidden (would yield raw pointer, use OSPointer instead)
+
+**Note:** In USER mode, the `@` operator is not available to user code. It may be used internally by the compiler/runtime to implement OSPointer operations, but is not directly accessible.
 
 ### 7.7 Primary Expressions
 
@@ -1066,7 +1124,8 @@ variable-access ::= ident
                   | variable-access "." ident           // Field access
                   | variable-access "[" expr-list "]"   // Array index
                   | variable-access "[" slice-expr "]"  // Array slice (SuperPascal extension)
-                  | variable-access "^"                  // Pointer dereference
+                  | variable-access "^"                  // Pointer dereference (raw pointer only)
+                  | ospointer-access                     // OSPointer indexing
 
 slice-expr ::= slice-start? ":" slice-end? (":" slice-step)?
 slice-start ::= expr
@@ -1187,6 +1246,7 @@ directive-name ::= "INLINE"
                  | "OVERFLOW_CHECK"
                  | "DEBUG"
                  | "RELEASE"
+                 | "EXECMODE"
                  | "IFDEF" ident
                  | "IFNDEF" ident
                  | "ENDIF"
@@ -1199,10 +1259,48 @@ directive-args ::= ident | integer-literal | string-literal
 {$INLINE}
 {$UNROLL}
 {$RANGE_CHECK ON}
+{$EXECMODE BAREMETAL}
+{$EXECMODE USER}
 {$IFDEF DEBUG}
   WriteLn('Debug mode');
 {$ENDIF}
 ```
+
+#### 8.3.1 Mode Directive
+
+```
+execmode-directive ::= "{$" "EXECMODE" execmode-name "}"
+execmode-name ::= "BAREMETAL" | "USER"
+```
+
+**Purpose:** Controls execution mode, affecting pointer and memory safety features.
+
+**Modes:**
+- **`{$EXECMODE BAREMETAL}`**: Bare metal mode - allows raw pointers, pointer arithmetic, address-of operator
+- **`{$EXECMODE USER}`**: User mode (default for OS platforms) - restricts to OSPointer, no pointer arithmetic
+
+**Default:** Platform-dependent
+- Bare metal platforms (no OS): `BAREMETAL`
+- OS platforms (PascalOS): `USER`
+
+**Scope:** Applies to entire compilation unit (program or unit)
+
+**Mode Effects:**
+- **BAREMETAL:**
+  - ✅ Raw pointers (`^T`) allowed
+  - ✅ Pointer arithmetic allowed
+  - ✅ Address-of operator (`@`) allowed
+  - ✅ `Ptr(addr)` function allowed
+  - ✅ Type casting to/from integers allowed
+  - ❌ OSPointer not available (OS feature)
+
+- **USER:**
+  - ❌ Raw pointers (`^T`) forbidden
+  - ❌ Pointer arithmetic forbidden (except internally for OSPointer implementation)
+  - ❌ Address-of operator (`@`) forbidden (except internally)
+  - ✅ OSPointer[T] required for dynamic memory
+  - ✅ Array indexing `p[i]` allowed (checked)
+  - ✅ Runtime bounds checking enabled
 
 ---
 

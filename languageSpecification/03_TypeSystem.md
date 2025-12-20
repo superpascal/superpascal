@@ -723,27 +723,33 @@ type PVec2 = ^TVec2;
 ```
 
 **Properties:**
-- **Size**: 2 bytes (16-bit address)
+- **Size**: 2 bytes (16-bit address) or 3 bytes (24-bit address on 65C816)
 - **Null value**: `nil`
 - **Dereference**: `ptr^` accesses pointed-to value
 - **Pointer arithmetic**: C-style arithmetic supported (SuperPascal extension)
 - **Type safety**: Can only point to declared type
+- **Mode Restrictions:**
+  - **BAREMETAL mode:** ✅ Allowed
+  - **USER mode:** ❌ Forbidden (use OSPointer[T] instead)
 
 **Rules:**
 - Can point to any type
 - `nil` is assignable to any pointer type
 - Dereferencing `nil` is undefined behavior
-- Pointer arithmetic is allowed (C-style)
+- Pointer arithmetic is allowed in BAREMETAL mode only
+- Raw pointers are restricted to bare metal mode for safety
 
-**Pointer Arithmetic (SuperPascal Extension):**
+**Pointer Arithmetic (SuperPascal Extension - BAREMETAL Mode Only):**
 
-SuperPascal supports full C-style pointer arithmetic:
+SuperPascal supports full C-style pointer arithmetic in BAREMETAL mode:
 
 ```pascal
+{$EXECMODE BAREMETAL}
+
 var p, q: ^integer;
 var i: integer;
 
-p := @array[0];        // Address-of operator
+p := @array[0];        // Address-of operator (BAREMETAL only)
 p := p + 1;            // Increment by sizeof(integer)
 p := p - 1;            // Decrement by sizeof(integer)
 p := p + 5;            // Add integer to pointer
@@ -752,6 +758,7 @@ i := q - p;            // Pointer difference (returns integer)
 ```
 
 **Pointer Arithmetic Rules:**
+- **Mode Restriction:** Only available in `{$EXECMODE BAREMETAL}`
 - **Type-aware**: Arithmetic is scaled by the size of the pointed-to type
   - `p + 1` where `p: ^integer` increments by 2 bytes (sizeof(integer))
   - `p + 1` where `p: ^byte` increments by 1 byte (sizeof(byte))
@@ -762,6 +769,7 @@ i := q - p;            // Pointer difference (returns integer)
 - **No Pointer + Pointer**: Addition of two pointers is not allowed
 - **Bounds**: No automatic bounds checking on pointer arithmetic
 - **Safety**: Pointer arithmetic can access invalid memory (undefined behavior)
+- **Internal Use**: Pointer arithmetic is used internally to implement OSPointer[T] but is not directly accessible to user code in USER mode
 
 **Examples:**
 ```pascal
@@ -778,9 +786,98 @@ offset := p - @arr[0]; // offset = 3 (element difference)
 ```
 
 **Memory Layout:**
-- Pointer value is 16-bit address
+- Pointer value is 16-bit address (or 24-bit on 65C816)
 - Points to heap, static memory, or stack
 - Arithmetic is performed in address space (scaled by type size)
+
+### 4.5 OSPointer Types (Capability Pointers)
+
+**Syntax:**
+```pascal
+type
+  IntBuffer = OSPointer[integer];
+  ByteBuffer = OSPointer[byte];
+  StringBuffer = OSPointer[char];
+```
+
+**Properties:**
+- **Mode Restrictions:**
+  - **USER mode:** ✅ Available
+  - **BAREMETAL mode:** ❌ Not available (OS feature)
+- **Opaque type**: Internal structure not accessible to user code
+- **Capability-based**: Encapsulates memory region with bounds and permissions
+- **Type-safe**: Generic type parameter specifies element type
+- **Runtime-checked**: All accesses validated at runtime
+
+**Internal Structure (opaque to user):**
+- Bank ID (8-bit): Which 64KB bank (65C816) or page identifier
+- Base offset (16-bit): Offset within bank/page
+- Length (16-bit): Size of accessible region (in bytes or elements)
+- Rights (8-bit): READ, WRITE, EXEC, SHARE permissions
+- Tag/ID: Validation token (prevents forgery)
+
+**Access Methods:**
+- **Array indexing**: `p[i]` - only way to access OSPointer contents
+- **Bounds checking**: Index must be within valid range
+- **Permission checking**: READ/WRITE permissions enforced
+- **No dereference**: `p^` syntax not available
+- **No arithmetic**: `p + n` not available
+
+**Construction:**
+- OSPointers can only be obtained via OS calls:
+  - `BankAlloc(size)` - Allocate memory
+  - `BankGrant(ptr, pid, rights)` - Share memory
+  - Other OS memory management APIs
+- Cannot be created from raw addresses
+- Cannot be cast from raw pointers or integers
+
+**Example:**
+```pascal
+{$EXECMODE USER}
+
+var buf: OSPointer[Byte];
+var value: Byte;
+var i: integer;
+
+// Allocate memory from OS
+buf := BankAlloc(1024);  // Get 1024 bytes
+
+// Access via indexing (checked at runtime)
+for i := 0 to 1023 do
+  buf[i] := 0;           // ✅ Allowed: checked write
+
+value := buf[5];         // ✅ Allowed: checked read
+buf[5] := 42;            // ✅ Allowed: checked write
+
+// Invalid operations (compile-time errors):
+// buf^ := 42;           // ❌ Forbidden: no dereference
+// buf := buf + 5;       // ❌ Forbidden: no arithmetic
+// var p: ^Byte := buf;  // ❌ Forbidden: cannot cast
+```
+
+**Type Safety:**
+- OSPointer types are **nominal** (by name)
+- Cannot be cast to/from raw pointers
+- Cannot be cast to/from integers
+- Cannot be cast between different OSPointer element types (except via OS calls)
+- Type parameter must match element size for indexing
+
+**Runtime Behavior:**
+- **Bounds checking**: Every `p[i]` access checks `0 <= i < length`
+- **Permission checking**: Write access requires WRITE permission
+- **Capability validation**: OS validates pointer authenticity on each access
+- **Error handling**: Out-of-bounds or invalid access raises runtime error
+
+**Implementation Notes:**
+- OSPointer is implemented using pointer arithmetic internally
+- Compiler generates checked access code for `p[i]`
+- User code cannot access raw pointer operations
+- OS mediates all memory accesses through capability system
+
+**Platform-Specific:**
+- **65C816 (PascalOS)**: Bank-based memory model (256 banks of 64KB)
+- **Other platforms**: Page-based or region-based models
+- Implementation details vary by platform but interface is consistent
 
 ---
 

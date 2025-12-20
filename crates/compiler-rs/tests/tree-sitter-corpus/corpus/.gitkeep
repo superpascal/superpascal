@@ -1,0 +1,9 @@
+# This directory contains corpus files synced from tree-sitter-pascal
+# 
+# To populate this directory, run:
+#   ./sync_corpus.sh
+# or
+#   cargo run --bin sync-corpus
+#
+# See corpus/README.md for more information
+

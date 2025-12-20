@@ -148,24 +148,37 @@ const Y = X * 2;  // Folds to 16
 - `string + string` → `string`
 - `string op string` → `boolean` (comparison)
 
-**Pointer Arithmetic (SuperPascal extension):**
+**Pointer Arithmetic (SuperPascal extension - BAREMETAL Mode Only):**
+
+**Mode Restrictions:**
+- **BAREMETAL mode:** ✅ Allowed
+- **USER mode:** ❌ Forbidden (use OSPointer indexing instead)
+
+**Operations (BAREMETAL mode only):**
 - `^T + integer` → `^T` (pointer to T, scaled by sizeof(T))
 - `^T - integer` → `^T` (pointer to T, scaled by sizeof(T))
 - `^T - ^T` → `integer` (difference in elements, not bytes)
 - Arithmetic is **type-aware**: scaling is automatic based on pointed-to type
 - No bounds checking: accessing invalid memory is undefined behavior
 
-**Pointer Arithmetic Examples:**
+**Pointer Arithmetic Examples (BAREMETAL mode):**
 ```pascal
+{$EXECMODE BAREMETAL}
+
 var p, q: ^integer;
 var arr: array[0..9] of integer;
 var offset: integer;
 
-p := @arr[0];        // p points to arr[0]
+p := @arr[0];        // p points to arr[0] (address-of allowed in BAREMETAL)
 p := p + 5;          // p now points to arr[5] (advances by 5 * 2 = 10 bytes)
 q := p - 2;          // q points to arr[3] (decrements by 2 * 2 = 4 bytes)
 offset := p - @arr[0]; // offset = 5 (element difference, not byte difference)
 ```
+
+**Internal Use:**
+- Pointer arithmetic is used internally by the compiler/runtime to implement OSPointer[T]
+- User code in USER mode cannot directly use pointer arithmetic
+- OSPointer indexing `p[i]` is implemented using pointer arithmetic behind the scenes
 
 ---
 
@@ -654,6 +667,57 @@ endparallel
 - Compile-time: Disjointness checking prevents data races
 - Runtime: Stack overflow detection (optional, debug mode)
 - No automatic garbage collection (manual memory management)
+
+### 10.5 Capability-Based Memory Model (OSPointer)
+
+**Overview:**
+In USER mode, SuperPascal uses a capability-based memory model via OSPointer[T] types. This provides memory safety without hardware MMU support.
+
+**OSPointer Semantics:**
+
+**Construction:**
+- OSPointers can only be obtained via OS system calls
+- Cannot be created from raw addresses or integers
+- Cannot be cast from raw pointers
+- OS validates and tracks all OSPointers
+
+**Access Semantics:**
+- **Indexing**: `p[i]` is the only access method
+- **Bounds checking**: Every access checks `0 <= i < length`
+- **Permission checking**: Write requires WRITE permission, read requires READ permission
+- **Type checking**: Element type must match OSPointer type parameter
+- **Runtime validation**: OS validates capability authenticity on each access
+
+**Indexing Semantics:**
+```pascal
+var p: OSPointer[Integer];
+var value: Integer;
+
+value := p[5];  // Read: checks bounds, permissions, validates capability
+p[5] := 42;     // Write: checks bounds, permissions, validates capability
+```
+
+**Implementation:**
+- Compiler generates checked access code for `p[i]`
+- Uses pointer arithmetic internally but not exposed to user
+- OS mediates all memory accesses through capability system
+- Bounds and permissions checked at runtime
+
+**Error Handling:**
+- Out-of-bounds access: Runtime error (process termination or exception)
+- Invalid capability: Runtime error (use-after-free detection)
+- Permission violation: Runtime error (write to read-only)
+
+**Lifetime:**
+- OSPointers are tied to OS-managed memory regions
+- Must be explicitly freed via OS calls
+- Use-after-free detected via capability validation
+- Memory zeroed on allocation and free
+
+**Platform-Specific:**
+- **65C816 (PascalOS)**: Bank-based (256 banks of 64KB)
+- **Other platforms**: Page-based or region-based
+- Implementation details vary but interface is consistent
 
 ---
 
