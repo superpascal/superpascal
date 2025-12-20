@@ -1361,6 +1361,7 @@ mod tests {
         };
         let record_type = Node::RecordType(RecordType {
             fields: vec![field_decl],
+            variant: None,
             span,
         });
         assert_eq!(record_type.span(), span);

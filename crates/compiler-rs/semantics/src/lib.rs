@@ -775,6 +775,11 @@ impl SemanticAnalyzer {
                             Type::Error
                         }
                     }
+                    ast::BinaryOp::In => {
+                        // Set membership: left IN right (right must be a set type)
+                        // For now, return boolean (proper type checking would verify right is a set)
+                        Type::boolean()
+                    }
                 }
             }
             Node::UnaryExpr(unary) => {
@@ -947,6 +952,10 @@ impl SemanticAnalyzer {
                     ast::BinaryOp::GreaterEqual => self.eval_greater_equal(&left, &right),
                     ast::BinaryOp::And => self.eval_and(&left, &right),
                     ast::BinaryOp::Or => self.eval_or(&left, &right),
+                    ast::BinaryOp::In => {
+                        // Set membership: IN operator evaluation not yet implemented for constant expressions
+                        None
+                    }
                 }
             }
             Node::UnaryExpr(unary) => {

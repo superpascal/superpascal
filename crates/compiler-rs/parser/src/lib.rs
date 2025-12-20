@@ -124,7 +124,6 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     // Declaration tests (nested routines, method declarations, simple program) are in declarations.rs
     // Unit/library tests are in units.rs
