@@ -10,7 +10,12 @@ use tokens::Span;
 pub enum Node {
     // ===== Program Structure =====
     Program(Program),
+    Unit(Unit),
+    Library(Library),
     Block(Block),
+    UsesClause(UsesClause),
+    InterfaceSection(InterfaceSection),
+    ImplementationSection(ImplementationSection),
 
     // ===== Declarations =====
     VarDecl(VarDecl),
@@ -18,6 +23,7 @@ pub enum Node {
     TypeDecl(TypeDecl),
     ProcDecl(ProcDecl),
     FuncDecl(FuncDecl),
+    PropertyDecl(PropertyDecl),
 
     // ===== Statements =====
     IfStmt(IfStmt),
@@ -65,6 +71,58 @@ pub struct Block {
     pub span: Span,
 }
 
+/// Unit node - Pascal unit/module
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unit {
+    pub name: String,                    // Unit name (can be qualified like "a.b.c")
+    pub interface: Option<InterfaceSection>, // Interface section
+    pub implementation: Option<ImplementationSection>, // Implementation section
+    pub initialization: Option<Box<Node>>,  // Optional initialization block
+    pub finalization: Option<Box<Node>>,    // Optional finalization block
+    pub span: Span,
+}
+
+/// Library node - Pascal library
+#[derive(Debug, Clone, PartialEq)]
+pub struct Library {
+    pub name: String,                    // Library name
+    pub block: Option<Box<Node>>,        // Optional block
+    pub span: Span,
+}
+
+/// Uses clause - imports other units/libraries
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsesClause {
+    pub units: Vec<String>,              // List of unit names (can be qualified)
+    pub span: Span,
+}
+
+/// Interface section - public declarations
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceSection {
+    pub uses: Option<UsesClause>,        // Optional uses clause
+    pub const_decls: Vec<Node>,          // ConstDecl nodes
+    pub type_decls: Vec<Node>,           // TypeDecl nodes
+    pub var_decls: Vec<Node>,            // VarDecl nodes
+    pub proc_decls: Vec<Node>,           // ProcDecl nodes (forward declarations)
+    pub func_decls: Vec<Node>,           // FuncDecl nodes (forward declarations)
+    pub property_decls: Vec<Node>,       // PropertyDecl nodes
+    pub span: Span,
+}
+
+/// Implementation section - private implementations
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImplementationSection {
+    pub uses: Option<UsesClause>,        // Optional uses clause
+    pub const_decls: Vec<Node>,          // ConstDecl nodes
+    pub type_decls: Vec<Node>,           // TypeDecl nodes
+    pub var_decls: Vec<Node>,            // VarDecl nodes
+    pub proc_decls: Vec<Node>,           // ProcDecl nodes
+    pub func_decls: Vec<Node>,           // FuncDecl nodes
+    pub property_decls: Vec<Node>,       // PropertyDecl nodes
+    pub span: Span,
+}
+
 /// Variable declaration
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl {
@@ -93,6 +151,7 @@ pub struct TypeDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcDecl {
     pub name: String,
+    pub class_name: Option<String>, // Optional class name for methods (ClassName.MethodName)
     pub params: Vec<Param>,        // Parameters
     pub block: Box<Node>,          // Block node
     pub span: Span,
@@ -102,9 +161,25 @@ pub struct ProcDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncDecl {
     pub name: String,
+    pub class_name: Option<String>, // Optional class name for methods (ClassName.MethodName)
     pub params: Vec<Param>,        // Parameters
     pub return_type: Box<Node>,    // Type node
     pub block: Box<Node>,           // Block node
+    pub span: Span,
+}
+
+/// Property declaration
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyDecl {
+    pub name: String,
+    pub index_params: Vec<Param>,   // Optional index parameters (for indexed properties)
+    pub property_type: Box<Node>,   // Type node
+    pub read_accessor: Option<String>, // Optional READ accessor
+    pub write_accessor: Option<String>, // Optional WRITE accessor
+    pub index_expr: Option<Box<Node>>,  // Optional INDEX expression
+    pub default_expr: Option<Box<Node>>, // Optional DEFAULT expression
+    pub stored_expr: Option<Box<Node>>,  // Optional STORED expression
+    pub is_default: bool,           // Whether this is a default property
     pub span: Span,
 }
 
@@ -361,12 +436,18 @@ impl Node {
     pub fn span(&self) -> Span {
         match self {
             Node::Program(p) => p.span,
+            Node::Unit(u) => u.span,
+            Node::Library(l) => l.span,
             Node::Block(b) => b.span,
+            Node::UsesClause(u) => u.span,
+            Node::InterfaceSection(i) => i.span,
+            Node::ImplementationSection(i) => i.span,
             Node::VarDecl(v) => v.span,
             Node::ConstDecl(c) => c.span,
             Node::TypeDecl(t) => t.span,
             Node::ProcDecl(p) => p.span,
             Node::FuncDecl(f) => f.span,
+            Node::PropertyDecl(p) => p.span,
             Node::IfStmt(i) => i.span,
             Node::WhileStmt(w) => w.span,
             Node::ForStmt(f) => f.span,
@@ -526,6 +607,7 @@ mod tests {
         });
         let proc_decl = Node::ProcDecl(ProcDecl {
             name: "DoSomething".to_string(),
+            class_name: None,
             params: vec![],
             block: Box::new(block),
             span,
@@ -556,6 +638,7 @@ mod tests {
         };
         let proc_decl = Node::ProcDecl(ProcDecl {
             name: "Print".to_string(),
+            class_name: None,
             params: vec![param],
             block: Box::new(block),
             span,
@@ -577,6 +660,7 @@ mod tests {
         });
         let func_decl = Node::FuncDecl(FuncDecl {
             name: "Add".to_string(),
+            class_name: None,
             params: vec![],
             return_type: Box::new(Node::NamedType(NamedType {
                 name: "integer".to_string(),
@@ -1305,6 +1389,7 @@ mod tests {
 
         let func_decl = Node::FuncDecl(FuncDecl {
             name: "Add".to_string(),
+            class_name: None,
             params: vec![param],
             return_type: Box::new(Node::NamedType(NamedType {
                 name: "integer".to_string(),

@@ -103,6 +103,9 @@ pub enum TokenKind {
     KwInterface,
     KwUnit,
     KwUses,
+    KwLibrary,
+    KwInitialization,
+    KwFinalization,
     KwNamespace,  // Future
     KwUsing,      // Future
 
@@ -115,6 +118,12 @@ pub enum TokenKind {
     KwProtected,
     KwPublic,
     KwVirtual,
+    KwProperty,
+    KwRead,
+    KwWrite,
+    KwIndex,
+    KwDefault,
+    KwStored,
 
     // ===== Keywords (Exceptions) =====
     KwExcept,
@@ -247,6 +256,9 @@ impl Token {
                 | TokenKind::KwInterface
                 | TokenKind::KwUnit
                 | TokenKind::KwUses
+                | TokenKind::KwLibrary
+                | TokenKind::KwInitialization
+                | TokenKind::KwFinalization
                 | TokenKind::KwNamespace
                 | TokenKind::KwUsing
                 | TokenKind::KwClass
@@ -257,6 +269,12 @@ impl Token {
                 | TokenKind::KwProtected
                 | TokenKind::KwPublic
                 | TokenKind::KwVirtual
+                | TokenKind::KwProperty
+                | TokenKind::KwRead
+                | TokenKind::KwWrite
+                | TokenKind::KwIndex
+                | TokenKind::KwDefault
+                | TokenKind::KwStored
                 | TokenKind::KwExcept
                 | TokenKind::KwFinally
                 | TokenKind::KwRaise
@@ -483,6 +501,9 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "interface") { return Some(TokenKind::KwInterface); }
     if eq_ignore_ascii_case(s, "unit") { return Some(TokenKind::KwUnit); }
     if eq_ignore_ascii_case(s, "uses") { return Some(TokenKind::KwUses); }
+    if eq_ignore_ascii_case(s, "library") { return Some(TokenKind::KwLibrary); }
+    if eq_ignore_ascii_case(s, "initialization") { return Some(TokenKind::KwInitialization); }
+    if eq_ignore_ascii_case(s, "finalization") { return Some(TokenKind::KwFinalization); }
     if eq_ignore_ascii_case(s, "namespace") { return Some(TokenKind::KwNamespace); }
     if eq_ignore_ascii_case(s, "using") { return Some(TokenKind::KwUsing); }
     // Tier 3: Object Pascal
@@ -494,6 +515,12 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "protected") { return Some(TokenKind::KwProtected); }
     if eq_ignore_ascii_case(s, "public") { return Some(TokenKind::KwPublic); }
     if eq_ignore_ascii_case(s, "virtual") { return Some(TokenKind::KwVirtual); }
+    if eq_ignore_ascii_case(s, "property") { return Some(TokenKind::KwProperty); }
+    if eq_ignore_ascii_case(s, "read") { return Some(TokenKind::KwRead); }
+    if eq_ignore_ascii_case(s, "write") { return Some(TokenKind::KwWrite); }
+    if eq_ignore_ascii_case(s, "index") { return Some(TokenKind::KwIndex); }
+    if eq_ignore_ascii_case(s, "default") { return Some(TokenKind::KwDefault); }
+    if eq_ignore_ascii_case(s, "stored") { return Some(TokenKind::KwStored); }
     // Exceptions
     if eq_ignore_ascii_case(s, "except") { return Some(TokenKind::KwExcept); }
     if eq_ignore_ascii_case(s, "finally") { return Some(TokenKind::KwFinally); }

@@ -142,9 +142,25 @@ impl Parser {
         }
     }
 
-    /// Parse a complete program
+    /// Parse a complete program, unit, or library
     pub fn parse(&mut self) -> ParserResult<Node> {
-        self.parse_program()
+        // Check what we're parsing: PROGRAM, UNIT, or LIBRARY
+        if self.check(&TokenKind::KwProgram) {
+            self.parse_program()
+        } else if self.check(&TokenKind::KwUnit) {
+            self.parse_unit()
+        } else if self.check(&TokenKind::KwLibrary) {
+            self.parse_library()
+        } else {
+            let span = self
+                .current()
+                .map(|t| t.span)
+                .unwrap_or_else(|| Span::at(0, 1, 1));
+            Err(ParserError::InvalidSyntax {
+                message: "Expected PROGRAM, UNIT, or LIBRARY".to_string(),
+                span,
+            })
+        }
     }
 
     /// Parse program: PROGRAM identifier ; block .
@@ -196,6 +212,308 @@ impl Parser {
             block: Box::new(block),
             span,
         }))
+    }
+
+    /// Parse unit: UNIT identifier ; [interface] [implementation] [initialization] [finalization] END .
+    fn parse_unit(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwUnit, "UNIT")?;
+
+        // Parse unit name (can be qualified like "a.b.c")
+        let name = self.parse_qualified_unit_name()?;
+
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        // Parse interface section (optional but usually present)
+        let interface = if self.check(&TokenKind::KwInterface) {
+            Some(self.parse_interface_section()?)
+        } else {
+            None
+        };
+
+        // Parse implementation section (optional but usually present)
+        let implementation = if self.check(&TokenKind::KwImplementation) {
+            Some(self.parse_implementation_section()?)
+        } else {
+            None
+        };
+
+        // Parse initialization section (optional)
+        let initialization = if self.check(&TokenKind::KwInitialization) {
+            self.advance()?; // consume INITIALIZATION
+            let block = self.parse_block()?;
+            // Consume semicolon after initialization block
+            if self.check(&TokenKind::Semicolon) {
+                self.advance()?;
+            }
+            Some(Box::new(block))
+        } else {
+            None
+        };
+
+        // Parse finalization section (optional)
+        let finalization = if self.check(&TokenKind::KwFinalization) {
+            self.advance()?; // consume FINALIZATION
+            let block = self.parse_block()?;
+            // Consume semicolon after finalization block
+            if self.check(&TokenKind::Semicolon) {
+                self.advance()?;
+            }
+            Some(Box::new(block))
+        } else {
+            None
+        };
+
+        // END
+        self.consume(TokenKind::KwEnd, "END")?;
+
+        // Period
+        self.consume(TokenKind::Dot, ".")?;
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(Node::Unit(ast::Unit {
+            name,
+            interface,
+            implementation,
+            initialization,
+            finalization,
+            span,
+        }))
+    }
+
+    /// Parse library: LIBRARY identifier ; [block] END .
+    fn parse_library(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwLibrary, "LIBRARY")?;
+
+        let name_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+        let name = match &name_token.kind {
+            TokenKind::Identifier(name) => name.clone(),
+            _ => return Err(ParserError::InvalidSyntax {
+                message: "Expected identifier after LIBRARY".to_string(),
+                span: name_token.span,
+            }),
+        };
+
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        // Optional block
+        let block = if self.check(&TokenKind::KwBegin) {
+            let parsed_block = self.parse_block()?;
+            // Consume semicolon after block if present
+            if self.check(&TokenKind::Semicolon) {
+                self.advance()?;
+            }
+            Some(Box::new(parsed_block))
+        } else {
+            None
+        };
+
+        // END
+        self.consume(TokenKind::KwEnd, "END")?;
+
+        // Period
+        self.consume(TokenKind::Dot, ".")?;
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(Node::Library(ast::Library {
+            name,
+            block,
+            span,
+        }))
+    }
+
+    /// Parse qualified unit name: identifier { . identifier }
+    fn parse_qualified_unit_name(&mut self) -> ParserResult<String> {
+        let mut parts = vec![];
+        
+        loop {
+            let token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+            let part = match &token.kind {
+                TokenKind::Identifier(name) => name.clone(),
+                _ => return Err(ParserError::InvalidSyntax {
+                    message: "Expected identifier".to_string(),
+                    span: token.span,
+                }),
+            };
+            parts.push(part);
+
+            if !self.check(&TokenKind::Dot) {
+                break;
+            }
+            self.advance()?; // consume the dot
+        }
+
+        Ok(parts.join("."))
+    }
+
+    /// Parse uses clause: USES identifier_list ;
+    fn parse_uses_clause(&mut self) -> ParserResult<ast::UsesClause> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwUses, "USES")?;
+
+        let mut units = vec![];
+        loop {
+            let unit_name = self.parse_qualified_unit_name()?;
+            units.push(unit_name);
+
+            if !self.check(&TokenKind::Comma) {
+                break;
+            }
+            self.advance()?; // consume comma
+        }
+
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(ast::UsesClause { units, span })
+    }
+
+    /// Parse interface section: INTERFACE [uses] [declarations]
+    fn parse_interface_section(&mut self) -> ParserResult<ast::InterfaceSection> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwInterface, "INTERFACE")?;
+
+        // Optional uses clause
+        let uses = if self.check(&TokenKind::KwUses) {
+            Some(self.parse_uses_clause()?)
+        } else {
+            None
+        };
+
+        // Parse declarations (const, type, var, procedures, functions, properties)
+        let mut const_decls = vec![];
+        let mut type_decls = vec![];
+        let mut var_decls = vec![];
+        let mut proc_decls = vec![];
+        let mut func_decls = vec![];
+        let mut property_decls = vec![];
+
+        loop {
+            if self.check(&TokenKind::KwConst) {
+                const_decls.extend(self.parse_const_decls()?);
+            } else if self.check(&TokenKind::KwType) {
+                type_decls.extend(self.parse_type_decls()?);
+            } else if self.check(&TokenKind::KwVar) {
+                var_decls.extend(self.parse_var_decls()?);
+            } else if self.check(&TokenKind::KwProcedure) {
+                proc_decls.push(self.parse_procedure_forward_decl()?);
+            } else if self.check(&TokenKind::KwFunction) {
+                func_decls.push(self.parse_function_forward_decl()?);
+            } else if self.check(&TokenKind::KwProperty) {
+                property_decls.push(self.parse_property_decl()?);
+            } else {
+                break;
+            }
+        }
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(ast::InterfaceSection {
+            uses,
+            const_decls,
+            type_decls,
+            var_decls,
+            proc_decls,
+            func_decls,
+            property_decls,
+            span,
+        })
+    }
+
+    /// Parse implementation section: IMPLEMENTATION [uses] [declarations]
+    fn parse_implementation_section(&mut self) -> ParserResult<ast::ImplementationSection> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwImplementation, "IMPLEMENTATION")?;
+
+        // Optional uses clause
+        let uses = if self.check(&TokenKind::KwUses) {
+            Some(self.parse_uses_clause()?)
+        } else {
+            None
+        };
+
+        // Parse declarations (const, type, var, procedures, functions, properties)
+        let mut const_decls = vec![];
+        let mut type_decls = vec![];
+        let mut var_decls = vec![];
+        let mut proc_decls = vec![];
+        let mut func_decls = vec![];
+        let mut property_decls = vec![];
+
+        loop {
+            if self.check(&TokenKind::KwConst) {
+                const_decls.extend(self.parse_const_decls()?);
+            } else if self.check(&TokenKind::KwType) {
+                type_decls.extend(self.parse_type_decls()?);
+            } else if self.check(&TokenKind::KwVar) {
+                var_decls.extend(self.parse_var_decls()?);
+            } else if self.check(&TokenKind::KwProcedure) {
+                proc_decls.push(self.parse_procedure_decl()?);
+            } else if self.check(&TokenKind::KwFunction) {
+                func_decls.push(self.parse_function_decl()?);
+            } else if self.check(&TokenKind::KwProperty) {
+                property_decls.push(self.parse_property_decl()?);
+            } else {
+                break;
+            }
+        }
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(ast::ImplementationSection {
+            uses,
+            const_decls,
+            type_decls,
+            var_decls,
+            proc_decls,
+            func_decls,
+            property_decls,
+            span,
+        })
     }
 
     /// Parse block: [declarations] BEGIN statements END
@@ -397,7 +715,123 @@ impl Parser {
         }))
     }
 
-    /// Parse procedure declaration: PROCEDURE identifier [ ( params ) ] ; block ;
+    /// Parse qualified name: ClassName.MethodName or just MethodName
+    /// Returns (class_name, method_name) where class_name is None if not present
+    fn parse_qualified_name(&mut self) -> ParserResult<(Option<String>, String)> {
+        let first_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+        let first_name = match &first_token.kind {
+            TokenKind::Identifier(name) => name.clone(),
+            _ => return Err(ParserError::InvalidSyntax {
+                message: "Expected identifier".to_string(),
+                span: first_token.span,
+            }),
+        };
+
+        // Check if there's a dot followed by another identifier (ClassName.MethodName)
+        if self.check(&TokenKind::Dot) {
+            self.advance()?; // consume the dot
+            let second_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+            let second_name = match &second_token.kind {
+                TokenKind::Identifier(name) => name.clone(),
+                _ => return Err(ParserError::InvalidSyntax {
+                    message: "Expected identifier after dot".to_string(),
+                    span: second_token.span,
+                }),
+            };
+            // Return (ClassName, MethodName)
+            Ok((Some(first_name), second_name))
+        } else {
+            // Just a regular name, no class prefix
+            Ok((None, first_name))
+        }
+    }
+
+    /// Parse procedure forward declaration: PROCEDURE [ClassName.]identifier [ ( params ) ] ;
+    fn parse_procedure_forward_decl(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwProcedure, "PROCEDURE")?;
+
+        // Parse method name: ClassName.MethodName or just MethodName
+        let (class_name, name) = self.parse_qualified_name()?;
+
+        let params = if self.check(&TokenKind::LeftParen) {
+            self.parse_params()?
+        } else {
+            vec![]
+        };
+
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        // Create an empty block for forward declarations
+        let empty_block = Node::Block(ast::Block {
+            const_decls: vec![],
+            type_decls: vec![],
+            var_decls: vec![],
+            proc_decls: vec![],
+            func_decls: vec![],
+            statements: vec![],
+            span: start_span,
+        });
+
+        let span = start_span;
+        Ok(Node::ProcDecl(ast::ProcDecl {
+            name,
+            class_name,
+            params,
+            block: Box::new(empty_block),
+            span,
+        }))
+    }
+
+    /// Parse function forward declaration: FUNCTION [ClassName.]identifier [ ( params ) ] : type ;
+    fn parse_function_forward_decl(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwFunction, "FUNCTION")?;
+
+        // Parse method name: ClassName.MethodName or just MethodName
+        let (class_name, name) = self.parse_qualified_name()?;
+
+        let params = if self.check(&TokenKind::LeftParen) {
+            self.parse_params()?
+        } else {
+            vec![]
+        };
+
+        self.consume(TokenKind::Colon, ":")?;
+        let return_type = self.parse_type()?;
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        // Create an empty block for forward declarations
+        let empty_block = Node::Block(ast::Block {
+            const_decls: vec![],
+            type_decls: vec![],
+            var_decls: vec![],
+            proc_decls: vec![],
+            func_decls: vec![],
+            statements: vec![],
+            span: start_span,
+        });
+
+        let span = start_span.merge(return_type.span());
+        Ok(Node::FuncDecl(ast::FuncDecl {
+            name,
+            class_name,
+            params,
+            return_type: Box::new(return_type),
+            block: Box::new(empty_block),
+            span,
+        }))
+    }
+
+    /// Parse procedure declaration: PROCEDURE [ClassName.]identifier [ ( params ) ] ; block ;
     fn parse_procedure_decl(&mut self) -> ParserResult<Node> {
         let start_span = self
             .current()
@@ -406,14 +840,8 @@ impl Parser {
 
         self.consume(TokenKind::KwProcedure, "PROCEDURE")?;
 
-        let name_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
-        let name = match &name_token.kind {
-            TokenKind::Identifier(name) => name.clone(),
-            _ => return Err(ParserError::InvalidSyntax {
-                message: "Expected identifier".to_string(),
-                span: name_token.span,
-            }),
-        };
+        // Parse method name: ClassName.MethodName or just MethodName
+        let (class_name, name) = self.parse_qualified_name()?;
 
         let params = if self.check(&TokenKind::LeftParen) {
             self.parse_params()?
@@ -428,20 +856,21 @@ impl Parser {
         let span = start_span.merge(block.span());
         Ok(Node::ProcDecl(ast::ProcDecl {
             name,
+            class_name,
             params,
             block: Box::new(block),
             span,
         }))
     }
 
-    /// Parse function declaration: FUNCTION identifier [ ( params ) ] : type ; block ;
-    fn parse_function_decl(&mut self) -> ParserResult<Node> {
+    /// Parse property declaration: PROPERTY identifier [ [ index_params ] ] : type [ READ identifier ] [ WRITE identifier ] [ INDEX expr ] [ DEFAULT expr ] [ STORED expr ] [ ; default ]
+    fn parse_property_decl(&mut self) -> ParserResult<Node> {
         let start_span = self
             .current()
             .map(|t| t.span)
             .unwrap_or_else(|| Span::at(0, 1, 1));
 
-        self.consume(TokenKind::KwFunction, "FUNCTION")?;
+        self.consume(TokenKind::KwProperty, "PROPERTY")?;
 
         let name_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
         let name = match &name_token.kind {
@@ -451,6 +880,127 @@ impl Parser {
                 span: name_token.span,
             }),
         };
+
+        // Optional index parameters: [ param1, param2: type; param3: type ]
+        let mut index_params = vec![];
+        if self.check(&TokenKind::LeftBracket) {
+            self.advance()?; // consume [
+            loop {
+                index_params.push(self.parse_param()?);
+                if !self.check(&TokenKind::Semicolon) {
+                    break;
+                }
+                self.advance()?; // consume semicolon
+            }
+            self.consume(TokenKind::RightBracket, "]")?;
+        }
+
+        // Type
+        self.consume(TokenKind::Colon, ":")?;
+        let property_type = self.parse_type()?;
+
+        // Optional READ accessor
+        let read_accessor = if self.check(&TokenKind::KwRead) {
+            self.advance()?; // consume READ
+            let read_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+            match &read_token.kind {
+                TokenKind::Identifier(name) => Some(name.clone()),
+                _ => return Err(ParserError::InvalidSyntax {
+                    message: "Expected identifier after READ".to_string(),
+                    span: read_token.span,
+                }),
+            }
+        } else {
+            None
+        };
+
+        // Optional WRITE accessor
+        let write_accessor = if self.check(&TokenKind::KwWrite) {
+            self.advance()?; // consume WRITE
+            let write_token = self.consume(TokenKind::Identifier(String::new()), "identifier")?;
+            match &write_token.kind {
+                TokenKind::Identifier(name) => Some(name.clone()),
+                _ => return Err(ParserError::InvalidSyntax {
+                    message: "Expected identifier after WRITE".to_string(),
+                    span: write_token.span,
+                }),
+            }
+        } else {
+            None
+        };
+
+        // Optional INDEX expression
+        let index_expr = if self.check(&TokenKind::KwIndex) {
+            self.advance()?; // consume INDEX
+            Some(Box::new(self.parse_expression()?))
+        } else {
+            None
+        };
+
+        // Optional DEFAULT expression
+        let default_expr = if self.check(&TokenKind::KwDefault) {
+            self.advance()?; // consume DEFAULT
+            // Check if it's followed by an expression or just a semicolon (default;)
+            if !self.check(&TokenKind::Semicolon) {
+                Some(Box::new(self.parse_expression()?))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Optional STORED expression
+        let stored_expr = if self.check(&TokenKind::KwStored) {
+            self.advance()?; // consume STORED
+            Some(Box::new(self.parse_expression()?))
+        } else {
+            None
+        };
+
+        // Consume semicolon after property attributes
+        self.consume(TokenKind::Semicolon, ";")?;
+
+        // Check for default; after semicolon - this marks it as a default property
+        let is_default = if self.check(&TokenKind::KwDefault) {
+            self.advance()?; // consume DEFAULT
+            self.consume(TokenKind::Semicolon, ";")?; // consume semicolon after default
+            true
+        } else {
+            false
+        };
+
+        let end_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+        let span = start_span.merge(end_span);
+
+        Ok(Node::PropertyDecl(ast::PropertyDecl {
+            name,
+            index_params,
+            property_type: Box::new(property_type),
+            read_accessor,
+            write_accessor,
+            index_expr,
+            default_expr,
+            stored_expr,
+            is_default,
+            span,
+        }))
+    }
+
+    /// Parse function declaration: FUNCTION [ClassName.]identifier [ ( params ) ] : type ; block ;
+    fn parse_function_decl(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwFunction, "FUNCTION")?;
+
+        // Parse method name: ClassName.MethodName or just MethodName
+        let (class_name, name) = self.parse_qualified_name()?;
 
         let params = if self.check(&TokenKind::LeftParen) {
             self.parse_params()?
@@ -467,6 +1017,7 @@ impl Parser {
         let span = start_span.merge(block.span());
         Ok(Node::FuncDecl(ast::FuncDecl {
             name,
+            class_name,
             params,
             return_type: Box::new(return_type),
             block: Box::new(block),
@@ -574,7 +1125,52 @@ impl Parser {
                 span,
             }))
         } else {
-            let name_token = self.consume(TokenKind::Identifier(String::new()), "type identifier")?;
+            // Accept either identifier or primitive type keywords
+            let name_token = if matches!(self.current().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+                self.consume(TokenKind::Identifier(String::new()), "type identifier")?
+            } else if self.check(&TokenKind::KwInteger) {
+                let token = self.current().unwrap().clone();
+                self.advance()?;
+                Token {
+                    kind: TokenKind::Identifier("integer".to_string()),
+                    span: token.span,
+                }
+            } else if self.check(&TokenKind::KwBoolean) {
+                let token = self.current().unwrap().clone();
+                self.advance()?;
+                Token {
+                    kind: TokenKind::Identifier("boolean".to_string()),
+                    span: token.span,
+                }
+            } else if self.check(&TokenKind::KwChar) {
+                let token = self.current().unwrap().clone();
+                self.advance()?;
+                Token {
+                    kind: TokenKind::Identifier("char".to_string()),
+                    span: token.span,
+                }
+            } else if self.check(&TokenKind::KwByte) {
+                let token = self.current().unwrap().clone();
+                self.advance()?;
+                Token {
+                    kind: TokenKind::Identifier("byte".to_string()),
+                    span: token.span,
+                }
+            } else if self.check(&TokenKind::KwWord) {
+                let token = self.current().unwrap().clone();
+                self.advance()?;
+                Token {
+                    kind: TokenKind::Identifier("word".to_string()),
+                    span: token.span,
+                }
+            } else {
+                return Err(ParserError::UnexpectedToken {
+                    expected: "type identifier or primitive type".to_string(),
+                    found: format!("{:?}", self.current().map(|t| &t.kind)),
+                    span: self.current().map(|t| t.span).unwrap_or_else(|| Span::at(0, 1, 1)),
+                });
+            };
+            
             let name = match &name_token.kind {
                 TokenKind::Identifier(name) => name.clone(),
                 _ => return Err(ParserError::InvalidSyntax {
@@ -1824,6 +2420,735 @@ mod tests {
         assert!(parser.is_ok());
         let parser = parser.unwrap();
         assert_eq!(parser.filename, Some("myfile.pas".to_string()));
+    }
+
+    // ===== Nested Routines Tests =====
+
+    #[test]
+    fn test_parse_nested_function_in_procedure() {
+        let source = r#"
+            program Test;
+            procedure Outer;
+                function Inner: integer;
+                begin
+                    Inner := 42;
+                end;
+            begin
+                writeln(Inner);
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.proc_decls.len(), 1);
+                if let Node::ProcDecl(outer_proc) = &block.proc_decls[0] {
+                    if let Node::Block(proc_block) = outer_proc.block.as_ref() {
+                        // Should have one nested function
+                        assert_eq!(proc_block.func_decls.len(), 1);
+                        if let Node::FuncDecl(inner_func) = &proc_block.func_decls[0] {
+                            assert_eq!(inner_func.name, "Inner");
+                        } else {
+                            panic!("Expected FuncDecl");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_procedure_in_function() {
+        let source = r#"
+            program Test;
+            function Outer: integer;
+                procedure Inner;
+                begin
+                    writeln('Inner');
+                end;
+            begin
+                Inner;
+                Outer := 10;
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.func_decls.len(), 1);
+                if let Node::FuncDecl(outer_func) = &block.func_decls[0] {
+                    if let Node::Block(func_block) = outer_func.block.as_ref() {
+                        // Should have one nested procedure
+                        assert_eq!(func_block.proc_decls.len(), 1);
+                        if let Node::ProcDecl(inner_proc) = &func_block.proc_decls[0] {
+                            assert_eq!(inner_proc.name, "Inner");
+                        } else {
+                            panic!("Expected ProcDecl");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_deeply_nested_routines() {
+        let source = r#"
+            program Test;
+            procedure Level1;
+                function Level2: integer;
+                    procedure Level3;
+                    begin
+                    end;
+                begin
+                    Level2 := 1;
+                end;
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(level1) = &block.proc_decls[0] {
+                    if let Node::Block(level1_block) = level1.block.as_ref() {
+                        if let Node::FuncDecl(level2) = &level1_block.func_decls[0] {
+                            if let Node::Block(level2_block) = level2.block.as_ref() {
+                                assert_eq!(level2_block.proc_decls.len(), 1);
+                                if let Node::ProcDecl(level3) = &level2_block.proc_decls[0] {
+                                    assert_eq!(level3.name, "Level3");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_routine_with_local_vars() {
+        let source = r#"
+            program Test;
+            procedure Outer;
+                var x: integer;
+                function Inner: integer;
+                    var y: integer;
+                begin
+                    Inner := x + y;
+                end;
+            begin
+                x := Inner;
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(outer_proc) = &block.proc_decls[0] {
+                    if let Node::Block(proc_block) = outer_proc.block.as_ref() {
+                        // Should have local var and nested function
+                        assert_eq!(proc_block.var_decls.len(), 1);
+                        assert_eq!(proc_block.func_decls.len(), 1);
+                        // Nested function should also have local var
+                        if let Node::FuncDecl(inner_func) = &proc_block.func_decls[0] {
+                            if let Node::Block(inner_block) = inner_func.block.as_ref() {
+                                assert_eq!(inner_block.var_decls.len(), 1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_nested_routines() {
+        let source = r#"
+            program Test;
+            procedure Outer;
+                procedure Helper1;
+                begin
+                end;
+                function Helper2: integer;
+                begin
+                    Helper2 := 2;
+                end;
+            begin
+                Helper1;
+                writeln(Helper2);
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(outer_proc) = &block.proc_decls[0] {
+                    if let Node::Block(proc_block) = outer_proc.block.as_ref() {
+                        // Should have both nested routines
+                        assert_eq!(proc_block.proc_decls.len(), 1);
+                        assert_eq!(proc_block.func_decls.len(), 1);
+                        if let Node::ProcDecl(helper1) = &proc_block.proc_decls[0] {
+                            assert_eq!(helper1.name, "Helper1");
+                        }
+                        if let Node::FuncDecl(helper2) = &proc_block.func_decls[0] {
+                            assert_eq!(helper2.name, "Helper2");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_routine_with_params() {
+        let source = r#"
+            program Test;
+            procedure Outer;
+                function Inner(x: integer): integer;
+                begin
+                    Inner := x * 2;
+                end;
+            begin
+                writeln(Inner(5));
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(outer_proc) = &block.proc_decls[0] {
+                    if let Node::Block(proc_block) = outer_proc.block.as_ref() {
+                        if let Node::FuncDecl(inner_func) = &proc_block.func_decls[0] {
+                            assert_eq!(inner_func.name, "Inner");
+                            assert_eq!(inner_func.params.len(), 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Method Declaration Tests =====
+
+    #[test]
+    fn test_parse_method_procedure() {
+        let source = r#"
+            program Test;
+            procedure MyClass.MyMethod;
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.proc_decls.len(), 1);
+                if let Node::ProcDecl(proc) = &block.proc_decls[0] {
+                    assert_eq!(proc.name, "MyMethod");
+                    assert_eq!(proc.class_name, Some("MyClass".to_string()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_method_function() {
+        let source = r#"
+            program Test;
+            function MyClass.GetValue: integer;
+            begin
+                GetValue := 42;
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.func_decls.len(), 1);
+                if let Node::FuncDecl(func) = &block.func_decls[0] {
+                    assert_eq!(func.name, "GetValue");
+                    assert_eq!(func.class_name, Some("MyClass".to_string()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_method_with_params() {
+        let source = r#"
+            program Test;
+            procedure MyClass.SetValue(x: integer);
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(proc) = &block.proc_decls[0] {
+                    assert_eq!(proc.name, "SetValue");
+                    assert_eq!(proc.class_name, Some("MyClass".to_string()));
+                    assert_eq!(proc.params.len(), 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_regular_procedure_still_works() {
+        let source = r#"
+            program Test;
+            procedure RegularProc;
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(proc) = &block.proc_decls[0] {
+                    assert_eq!(proc.name, "RegularProc");
+                    assert_eq!(proc.class_name, None);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_methods_same_class() {
+        let source = r#"
+            program Test;
+            procedure MyClass.Method1;
+            begin
+            end;
+            function MyClass.Method2: integer;
+            begin
+                Method2 := 1;
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.proc_decls.len(), 1);
+                assert_eq!(block.func_decls.len(), 1);
+                if let Node::ProcDecl(proc) = &block.proc_decls[0] {
+                    assert_eq!(proc.class_name, Some("MyClass".to_string()));
+                    assert_eq!(proc.name, "Method1");
+                }
+                if let Node::FuncDecl(func) = &block.func_decls[0] {
+                    assert_eq!(func.class_name, Some("MyClass".to_string()));
+                    assert_eq!(func.name, "Method2");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_methods_different_classes() {
+        let source = r#"
+            program Test;
+            procedure ClassA.MethodA;
+            begin
+            end;
+            procedure ClassB.MethodB;
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                assert_eq!(block.proc_decls.len(), 2);
+                if let Node::ProcDecl(proc1) = &block.proc_decls[0] {
+                    assert_eq!(proc1.class_name, Some("ClassA".to_string()));
+                    assert_eq!(proc1.name, "MethodA");
+                }
+                if let Node::ProcDecl(proc2) = &block.proc_decls[1] {
+                    assert_eq!(proc2.class_name, Some("ClassB".to_string()));
+                    assert_eq!(proc2.name, "MethodB");
+                }
+            }
+        }
+    }
+
+    // ===== Unit/Module Tests =====
+
+    #[test]
+    fn test_parse_empty_unit() {
+        let source = r#"
+            unit TestUnit;
+            interface
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            assert_eq!(unit.name, "TestUnit");
+            assert!(unit.interface.is_some());
+            assert!(unit.implementation.is_some());
+            assert!(unit.initialization.is_none());
+            assert!(unit.finalization.is_none());
+        } else {
+            panic!("Expected Unit node");
+        }
+    }
+
+    #[test]
+    fn test_parse_unit_with_uses() {
+        let source = r#"
+            unit TestUnit;
+            interface
+            uses UnitA, UnitB;
+            implementation
+            uses UnitC;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                assert!(interface.uses.is_some());
+                if let Some(uses) = &interface.uses {
+                    assert_eq!(uses.units.len(), 2);
+                    assert_eq!(uses.units[0], "UnitA");
+                    assert_eq!(uses.units[1], "UnitB");
+                }
+            }
+            if let Some(implementation) = &unit.implementation {
+                assert!(implementation.uses.is_some());
+                if let Some(uses) = &implementation.uses {
+                    assert_eq!(uses.units.len(), 1);
+                    assert_eq!(uses.units[0], "UnitC");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_unit_with_qualified_name() {
+        let source = r#"
+            unit MyNamespace.MyModule;
+            interface
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            assert_eq!(unit.name, "MyNamespace.MyModule");
+        }
+    }
+
+    #[test]
+    fn test_parse_unit_with_declarations() {
+        let source = r#"
+            unit TestUnit;
+            interface
+                const C = 10;
+                type T = integer;
+                procedure Proc;
+                function Func: integer;
+            implementation
+                procedure Proc;
+                begin
+                end;
+                function Func: integer;
+                begin
+                    Func := 42;
+                end;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                assert_eq!(interface.const_decls.len(), 1);
+                assert_eq!(interface.type_decls.len(), 1);
+                assert_eq!(interface.proc_decls.len(), 1);
+                assert_eq!(interface.func_decls.len(), 1);
+            }
+            if let Some(implementation) = &unit.implementation {
+                assert_eq!(implementation.proc_decls.len(), 1);
+                assert_eq!(implementation.func_decls.len(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_unit_with_initialization_finalization() {
+        let source = r#"
+            unit TestUnit;
+            interface
+            implementation
+            initialization
+            begin
+                writeln('Init');
+            end;
+            finalization
+            begin
+                writeln('Finalize');
+            end;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            assert!(unit.initialization.is_some());
+            assert!(unit.finalization.is_some());
+        }
+    }
+
+    #[test]
+    fn test_parse_library() {
+        let source = r#"
+            library TestLib;
+            begin
+                writeln('Library');
+            end;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Library(lib)) = result {
+            assert_eq!(lib.name, "TestLib");
+            assert!(lib.block.is_some());
+        } else {
+            panic!("Expected Library node");
+        }
+    }
+
+    #[test]
+    fn test_parse_library_empty() {
+        let source = r#"
+            library TestLib;
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Library(lib)) = result {
+            assert_eq!(lib.name, "TestLib");
+            assert!(lib.block.is_none());
+        }
+    }
+
+    #[test]
+    fn test_parse_uses_qualified_names() {
+        let source = r#"
+            unit TestUnit;
+            interface
+            uses System.Classes, System.SysUtils, MyUnit;
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                if let Some(uses) = &interface.uses {
+                    assert_eq!(uses.units.len(), 3);
+                    assert_eq!(uses.units[0], "System.Classes");
+                    assert_eq!(uses.units[1], "System.SysUtils");
+                    assert_eq!(uses.units[2], "MyUnit");
+                }
+            }
+        }
+    }
+
+    // ===== Property Declaration Tests =====
+
+    #[test]
+    fn test_parse_property_simple() {
+        let source = r#"
+            unit TestUnit;
+            interface
+                property Name: string read FName write SetName;
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                assert_eq!(interface.property_decls.len(), 1);
+                if let Node::PropertyDecl(prop) = &interface.property_decls[0] {
+                    assert_eq!(prop.name, "Name");
+                    assert_eq!(prop.read_accessor, Some("FName".to_string()));
+                    assert_eq!(prop.write_accessor, Some("SetName".to_string()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_property_read_only() {
+        let source = r#"
+            unit TestUnit;
+            interface
+                property Value: integer read FValue;
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                if let Node::PropertyDecl(prop) = &interface.property_decls[0] {
+                    assert_eq!(prop.read_accessor, Some("FValue".to_string()));
+                    assert_eq!(prop.write_accessor, None);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_property_with_index_params() {
+        let source = r#"
+            unit TestUnit;
+            interface
+                property Items[i: integer]: string read GetItem write SetItem;
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                if let Node::PropertyDecl(prop) = &interface.property_decls[0] {
+                    assert_eq!(prop.name, "Items");
+                    assert_eq!(prop.index_params.len(), 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_property_default_property() {
+        let source = r#"
+            unit TestUnit;
+            interface
+                property Items[i: integer]: string read GetItem write SetItem; default;
+            implementation
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Unit(unit)) = result {
+            if let Some(interface) = &unit.interface {
+                if let Node::PropertyDecl(prop) = &interface.property_decls[0] {
+                    assert!(prop.is_default);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_routines_with_all_declarations() {
+        let source = r#"
+            program Test;
+            procedure Outer;
+                const C = 10;
+                type T = integer;
+                var v: integer;
+                procedure Nested;
+                begin
+                end;
+            begin
+            end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::ProcDecl(outer_proc) = &block.proc_decls[0] {
+                    if let Node::Block(proc_block) = outer_proc.block.as_ref() {
+                        // Should have all declaration types
+                        assert_eq!(proc_block.const_decls.len(), 1);
+                        assert_eq!(proc_block.type_decls.len(), 1);
+                        assert_eq!(proc_block.var_decls.len(), 1);
+                        assert_eq!(proc_block.proc_decls.len(), 1);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
