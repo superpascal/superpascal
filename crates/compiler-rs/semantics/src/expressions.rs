@@ -203,16 +203,19 @@ impl SemanticAnalyzer {
             }
             Node::IndexExpr(idx) => {
                 let array_type = self.analyze_expression(&idx.array);
-                if let Type::Array { element_type, .. } = array_type {
-                    let _index_type = self.analyze_expression(&idx.index);
-                    // Check index type (for now, we assume integer indexing)
-                    *element_type
-                } else {
-                    self.core.add_error(
-                        "Index expression must be applied to an array".to_string(),
-                        idx.span,
-                    );
-                    Type::Error
+                match array_type {
+                    Type::Array { element_type, .. } | Type::DynamicArray { element_type } => {
+                        let _index_type = self.analyze_expression(&idx.index);
+                        // Check index type (for now, we assume integer indexing)
+                        *element_type
+                    }
+                    _ => {
+                        self.core.add_error(
+                            "Index expression must be applied to an array".to_string(),
+                            idx.span,
+                        );
+                        Type::Error
+                    }
                 }
             }
             Node::FieldExpr(field) => {

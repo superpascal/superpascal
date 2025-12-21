@@ -35,18 +35,31 @@ impl super::Parser {
             }))
         } else if self.check(&TokenKind::KwArray) {
             self.advance()?; // consume ARRAY
-            self.consume(TokenKind::LeftBracket, "[")?;
-            let index_type = self.parse_type()?;
-            self.consume(TokenKind::RightBracket, "]")?;
-            self.consume(TokenKind::KwOf, "OF")?;
-            let element_type = self.parse_type()?;
-            let span = start_span.merge(element_type.span());
-            Ok(Node::ArrayType(ast::ArrayType {
-                is_packed,
-                index_type: Box::new(index_type),
-                element_type: Box::new(element_type),
-                span,
-            }))
+            // Check if it's a dynamic array (ARRAY OF) or static array (ARRAY [ index ] OF)
+            if self.check(&TokenKind::KwOf) {
+                // Dynamic array: ARRAY OF element_type
+                self.advance()?; // consume OF
+                let element_type = self.parse_type()?;
+                let span = start_span.merge(element_type.span());
+                Ok(Node::DynamicArrayType(ast::DynamicArrayType {
+                    element_type: Box::new(element_type),
+                    span,
+                }))
+            } else {
+                // Static array: ARRAY [ index_type ] OF element_type
+                self.consume(TokenKind::LeftBracket, "[")?;
+                let index_type = self.parse_type()?;
+                self.consume(TokenKind::RightBracket, "]")?;
+                self.consume(TokenKind::KwOf, "OF")?;
+                let element_type = self.parse_type()?;
+                let span = start_span.merge(element_type.span());
+                Ok(Node::ArrayType(ast::ArrayType {
+                    is_packed,
+                    index_type: Box::new(index_type),
+                    element_type: Box::new(element_type),
+                    span,
+                }))
+            }
         } else if self.check(&TokenKind::KwSet) {
             // SET OF type
             self.advance()?; // consume SET
@@ -1488,6 +1501,94 @@ mod tests {
                         assert_eq!(enum_type.values[3], "Cancelled");
                     } else {
                         panic!("Expected EnumType");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_dynamic_array() {
+        let source = r#"
+            program Test;
+            type
+                IntArray = array of integer;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    if let Node::DynamicArrayType(dyn_arr) = type_decl.type_expr.as_ref() {
+                        if let Node::NamedType(named) = dyn_arr.element_type.as_ref() {
+                            assert_eq!(named.name, "integer");
+                        } else {
+                            panic!("Expected NamedType for element type");
+                        }
+                    } else {
+                        panic!("Expected DynamicArrayType");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_dynamic_array_vs_static_array() {
+        let source = r#"
+            program Test;
+            type
+                StaticArray = array[0..9] of integer;
+                DynamicArray = array of integer;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                // First type should be static array
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    assert!(matches!(type_decl.type_expr.as_ref(), Node::ArrayType(_)));
+                }
+                // Second type should be dynamic array
+                if let Node::TypeDecl(type_decl) = &block.type_decls[1] {
+                    assert!(matches!(type_decl.type_expr.as_ref(), Node::DynamicArrayType(_)));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_dynamic_array_of_string() {
+        let source = r#"
+            program Test;
+            type
+                StringArray = array of string;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    if let Node::DynamicArrayType(dyn_arr) = type_decl.type_expr.as_ref() {
+                        if let Node::StringType(_) = dyn_arr.element_type.as_ref() {
+                            // Good - element type is string
+                        } else {
+                            panic!("Expected StringType for element type");
+                        }
+                    } else {
+                        panic!("Expected DynamicArrayType");
                     }
                 }
             }

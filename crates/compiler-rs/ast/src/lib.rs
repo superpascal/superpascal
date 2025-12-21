@@ -59,6 +59,7 @@ pub enum Node {
     // ===== Types =====
     RecordType(RecordType),
     ArrayType(ArrayType),
+    DynamicArrayType(DynamicArrayType),
     NamedType(NamedType),
     PointerType(PointerType),
     ClassType(ClassType),
@@ -568,11 +569,18 @@ pub struct Variant {
     pub span: Span,
 }
 
-/// Array type
+/// Array type (static array: ARRAY [ index_type ] OF element_type)
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArrayType {
     pub is_packed: bool,            // true if PACKED keyword is present
     pub index_type: Box<Node>,      // Type node (index type)
+    pub element_type: Box<Node>,    // Type node (element type)
+    pub span: Span,
+}
+
+/// Dynamic array type (ARRAY OF element_type - no index type)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DynamicArrayType {
     pub element_type: Box<Node>,    // Type node (element type)
     pub span: Span,
 }
@@ -747,6 +755,7 @@ impl Node {
             Node::AddressOfExpr(a) => a.span,
             Node::RecordType(r) => r.span,
             Node::ArrayType(a) => a.span,
+            Node::DynamicArrayType(d) => d.span,
             Node::NamedType(n) => n.span,
             Node::PointerType(p) => p.span,
             Node::ClassType(c) => c.span,

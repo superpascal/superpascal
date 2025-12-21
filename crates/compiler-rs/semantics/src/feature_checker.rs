@@ -62,9 +62,12 @@ impl FeatureChecker {
         match node {
             // Dynamic arrays
             Node::ArrayType(_arr) => {
-                // Check if it's a dynamic array (no index type)
-                // This is a simplified check - in reality, we'd need to check the AST structure
-                None // TODO: Implement proper dynamic array detection
+                // Static array - no feature check needed (supported on all platforms)
+                None
+            }
+            Node::DynamicArrayType(_dyn_arr) => {
+                // Dynamic arrays require heap management
+                Some(LanguageFeature::DynamicArrays)
             }
             
             // Sets

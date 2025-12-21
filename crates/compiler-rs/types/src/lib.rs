@@ -10,12 +10,16 @@
 pub enum Type {
     /// Primitive types
     Primitive(PrimitiveType),
-    /// Array type: array[index_type] of element_type
+    /// Array type: array[index_type] of element_type (static array)
     Array {
         index_type: Box<Type>,
         element_type: Box<Type>,
         /// Size in bytes (calculated during semantic analysis)
         size: Option<usize>,
+    },
+    /// Dynamic array type: array of element_type (no fixed size)
+    DynamicArray {
+        element_type: Box<Type>,
     },
     /// Record type: record fields... end
     Record {
@@ -111,12 +115,19 @@ impl Type {
         Type::Primitive(PrimitiveType::Char)
     }
 
-    /// Create an array type
+    /// Create an array type (static array)
     pub fn array(index_type: Type, element_type: Type) -> Self {
         Type::Array {
             index_type: Box::new(index_type),
             element_type: Box::new(element_type),
             size: None,
+        }
+    }
+
+    /// Create a dynamic array type
+    pub fn dynamic_array(element_type: Type) -> Self {
+        Type::DynamicArray {
+            element_type: Box::new(element_type),
         }
     }
 
@@ -156,6 +167,14 @@ impl Type {
                     ..
                 },
             ) => idx1.equals(idx2) && elem1.equals(elem2),
+            (
+                Type::DynamicArray {
+                    element_type: elem1,
+                },
+                Type::DynamicArray {
+                    element_type: elem2,
+                },
+            ) => elem1.equals(elem2),
             (Type::Record { fields: f1, .. }, Type::Record { fields: f2, .. }) => {
                 if f1.len() != f2.len() {
                     return false;
@@ -221,6 +240,7 @@ impl Type {
         match self {
             Type::Primitive(prim) => Some(prim.size()),
             Type::Array { size, .. } => *size,
+            Type::DynamicArray { .. } => None, // Dynamic arrays have no fixed size
             Type::Record { size, .. } => *size,
             Type::Pointer { .. } => Some(2), // Pointers are 16-bit (2 bytes) on 8-bit/16-bit targets
             Type::Named { .. } => None, // Need to resolve named type first
@@ -233,6 +253,7 @@ impl Type {
         match self {
             Type::Primitive(prim) => prim.alignment(),
             Type::Array { element_type, .. } => element_type.alignment(),
+            Type::DynamicArray { element_type } => element_type.alignment(),
             Type::Record { fields, .. } => {
                 // Record alignment is the maximum alignment of its fields
                 fields

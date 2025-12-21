@@ -37,6 +37,9 @@ impl CoreAnalyzer {
             Type::Array { element_type, .. } => {
                 format!("array of {}", Self::format_type(element_type))
             }
+            Type::DynamicArray { element_type } => {
+                format!("dynamic array of {}", Self::format_type(element_type))
+            }
             Type::Record { fields, .. } => {
                 format!("record with {} fields", fields.len())
             }

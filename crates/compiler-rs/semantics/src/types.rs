@@ -44,6 +44,10 @@ impl SemanticAnalyzer {
                 let element_type = self.analyze_type(&a.element_type);
                 Type::array(index_type, element_type)
             }
+            Node::DynamicArrayType(d) => {
+                let element_type = self.analyze_type(&d.element_type);
+                Type::dynamic_array(element_type)
+            }
             Node::RecordType(r) => {
                 let fields: Vec<Field> = r
                     .fields
