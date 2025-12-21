@@ -5,7 +5,7 @@
 use ast;
 use ast::Node;
 use errors::{ParserError, ParserResult};
-use tokens::{Span, Token, TokenKind};
+use tokens::{Span, TokenKind};
 
 /// Statement parsing functionality
 impl super::Parser {
@@ -118,7 +118,7 @@ impl super::Parser {
                 if self.check_peek(&TokenKind::KwIn) {
                     // It's for..in - we've consumed FOR and identifier is current
                     // Continue parsing for..in from here
-                    let var_token = self.advance_and_get_token()?; // Actually identifier is already current
+                    let _var_token = self.advance_and_get_token()?; // Actually identifier is already current
                     let var_name = match self.current().map(|t| &t.kind) {
                         Some(TokenKind::Identifier(name)) => name.clone(),
                         _ => return Err(ParserError::InvalidSyntax {
@@ -401,7 +401,9 @@ impl super::Parser {
     }
 
     /// Parse for..in statement: FOR identifier IN expression DO statement
-    fn parse_for_in_statement(&mut self) -> ParserResult<Node> {
+    /// Note: Currently parsed inline in parse_statement, but kept for potential refactoring
+    #[allow(dead_code)]
+    pub(crate) fn parse_for_in_statement(&mut self) -> ParserResult<Node> {
         let start_span = self
             .current()
             .map(|t| t.span)

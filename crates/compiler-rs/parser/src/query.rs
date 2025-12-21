@@ -200,7 +200,6 @@ impl AstQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokens::Span;
 
     #[test]
     fn test_find_procedures() {

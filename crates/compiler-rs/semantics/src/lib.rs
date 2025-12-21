@@ -312,18 +312,8 @@ mod tests {
 
     #[test]
     fn test_constant_folding_while_false() {
-        let mut analyzer = SemanticAnalyzer::new(Some("test.pas".to_string()));
         let span = Span::new(0, 10, 1, 1);
         
-        // Add variable x to symbol table
-        let var_symbol = Symbol {
-            kind: SymbolKind::Variable {
-                name: "x".to_string(),
-                var_type: Type::integer(),
-                span,
-            },
-            scope_level: 0,
-        };
         // Test WHILE with constant false condition
         // while false do x := 1
         let while_stmt = WhileStmt {

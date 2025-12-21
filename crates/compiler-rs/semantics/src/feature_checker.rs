@@ -61,7 +61,7 @@ impl FeatureChecker {
     fn node_to_feature(&self, node: &Node) -> Option<LanguageFeature> {
         match node {
             // Dynamic arrays
-            Node::ArrayType(arr) => {
+            Node::ArrayType(_arr) => {
                 // Check if it's a dynamic array (no index type)
                 // This is a simplified check - in reality, we'd need to check the AST structure
                 None // TODO: Implement proper dynamic array detection

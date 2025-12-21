@@ -107,7 +107,7 @@ impl Parser {
                     diag = diag.with_code_snippet(source);
                 }
             }
-            ParserError::UnexpectedEof { expected, span } => {
+            ParserError::UnexpectedEof { expected, span: _ } => {
                 let suggestion = match expected.as_str() {
                     "END" => "Add 'END' to close the block, procedure, or function.",
                     ";" => "Add ';' to terminate the statement.",

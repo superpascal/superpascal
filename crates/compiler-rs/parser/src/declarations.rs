@@ -911,7 +911,7 @@ impl super::Parser {
                     "^".to_string()
                 }
                 // Identifier operator name
-                TokenKind::Identifier(name) => {
+                TokenKind::Identifier(_name) => {
                     let name_token = self.advance_and_get_token()?;
                     match name_token.kind {
                         TokenKind::Identifier(name) => name,

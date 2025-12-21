@@ -3,7 +3,7 @@
 use errors::Diagnostic;
 use symbols::SymbolTable;
 use tokens::Span;
-use ::types::{PrimitiveType, Type};
+use ::types::Type;
 
 /// Core semantic analyzer functionality
 pub struct CoreAnalyzer {

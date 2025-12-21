@@ -28,6 +28,7 @@ impl Compiler {
     }
     
     /// Create a new compiler instance for a specific target platform
+    #[allow(dead_code)] // Public API method
     pub fn new_with_target(target: TargetPlatform) -> Self {
         Self {
             target,
@@ -36,6 +37,7 @@ impl Compiler {
     }
     
     /// Create a compiler instance with feature checking disabled
+    #[allow(dead_code)] // Public API method
     pub fn new_without_feature_check(target: TargetPlatform) -> Self {
         Self {
             target,
@@ -44,16 +46,19 @@ impl Compiler {
     }
     
     /// Get the current target platform
+    #[allow(dead_code)] // Public API method
     pub fn target(&self) -> TargetPlatform {
         self.target
     }
     
     /// Set the target platform
+    #[allow(dead_code)] // Public API method
     pub fn set_target(&mut self, target: TargetPlatform) {
         self.target = target;
     }
     
     /// Enable or disable feature checking
+    #[allow(dead_code)] // Public API method
     pub fn set_feature_checking(&mut self, enabled: bool) {
         self.check_features = enabled;
     }
