@@ -72,12 +72,16 @@ pub enum Node {
     
     // ===== Set Literals =====
     SetLiteral(SetLiteral),
+    
+    // ===== Directives =====
+    Directive(Directive),
 }
 
 /// Program node - root of the AST
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub name: String,
+    pub directives: Vec<Node>,  // Directive nodes (compiler directives)
     pub block: Box<Node>, // Block node
     pub span: Span,
 }
@@ -85,6 +89,7 @@ pub struct Program {
 /// Block node - contains declarations and statements
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
+    pub directives: Vec<Node>,  // Directive nodes (compiler directives)
     pub label_decls: Vec<Node>,  // LabelDecl nodes
     pub const_decls: Vec<Node>,  // ConstDecl nodes
     pub type_decls: Vec<Node>,   // TypeDecl nodes
@@ -663,6 +668,13 @@ pub struct SetLiteral {
     pub span: Span,
 }
 
+/// Compiler directive: {$...} or (*$...*)
+#[derive(Debug, Clone, PartialEq)]
+pub struct Directive {
+    pub content: String,  // Directive content (e.g., "IFDEF DEBUG", "DEFINE FOO")
+    pub span: Span,
+}
+
 /// Set element (single value or range)
 #[derive(Debug, Clone, PartialEq)]
 pub enum SetElement {
@@ -767,6 +779,7 @@ impl Node {
             Node::EnumType(e) => e.span,
             Node::EnumLiteralExpr(e) => e.span,
             Node::SetLiteral(s) => s.span,
+            Node::Directive(d) => d.span,
         }
     }
 }
@@ -781,6 +794,7 @@ mod tests {
     fn test_program_node() {
         let span = Span::new(0, 10, 1, 1);
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -793,6 +807,7 @@ mod tests {
             span,
         });
         let program = Node::Program(Program {
+            directives: vec![],
             name: "HelloWorld".to_string(),
             block: Box::new(block),
             span,
@@ -804,6 +819,7 @@ mod tests {
     fn test_block_node() {
         let span = Span::new(0, 20, 1, 1);
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -832,6 +848,7 @@ mod tests {
             span,
         });
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -913,6 +930,7 @@ mod tests {
     fn test_proc_decl() {
         let span = Span::new(0, 30, 1, 1);
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -942,6 +960,7 @@ mod tests {
     fn test_proc_decl_with_params() {
         let span = Span::new(0, 40, 1, 1);
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -981,6 +1000,7 @@ mod tests {
     fn test_func_decl() {
         let span = Span::new(0, 35, 1, 1);
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -1666,6 +1686,7 @@ mod tests {
         });
 
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -1679,6 +1700,7 @@ mod tests {
         });
 
         let program = Node::Program(Program {
+            directives: vec![],
             name: "TestProgram".to_string(),
             block: Box::new(block),
             span,
@@ -1725,6 +1747,7 @@ mod tests {
         });
 
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],

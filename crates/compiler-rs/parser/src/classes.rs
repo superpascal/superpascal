@@ -264,6 +264,7 @@ impl super::Parser {
 
         // Create an empty block for forward declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -318,6 +319,7 @@ impl super::Parser {
 
         // Create an empty block for forward declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],

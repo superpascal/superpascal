@@ -890,6 +890,7 @@ impl super::Parser {
         let span = start_span.merge(end_token.span);
 
         Ok(Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],

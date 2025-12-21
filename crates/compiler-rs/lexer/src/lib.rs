@@ -73,6 +73,20 @@ impl Lexer {
         }
 
         self.skip_whitespace();
+        
+        // Check for directives before comments
+        let ch = if !self.is_at_end() { Some(self.current_char()) } else { None };
+        if ch == Some('{') && self.peek_char() == Some('$') {
+            // Compiler directive: {$...}
+            return self.scan_directive_curly();
+        } else if ch == Some('(') && self.peek_char() == Some('*') {
+            let peek2 = self.peek_char_at(2);
+            if peek2 == Some('$') {
+                // Compiler directive: (*$...*)
+                return self.scan_directive_paren();
+            }
+        }
+        
         self.skip_comments()?;
 
         // Check for EOF
@@ -153,6 +167,15 @@ impl Lexer {
             None
         } else {
             Some(self.source[self.position + 1])
+        }
+    }
+
+    /// Peek at character at offset without advancing
+    fn peek_char_at(&self, offset: usize) -> Option<char> {
+        if self.position + offset >= self.source.len() {
+            None
+        } else {
+            Some(self.source[self.position + offset])
         }
     }
 
@@ -240,6 +263,80 @@ impl Lexer {
             line: start_line,
             column: start_col,
         })
+    }
+
+    /// Scan compiler directive: {$...}
+    fn scan_directive_curly(&mut self) -> Result<Token, LexerError> {
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        self.advance(); // Skip '{'
+        self.advance(); // Skip '$'
+
+        let mut directive_content = String::new();
+        while !self.is_at_end() {
+            if self.current_char() == '}' {
+                self.advance(); // Skip '}'
+                break;
+            }
+            directive_content.push(self.current_char());
+            self.advance();
+        }
+
+        if directive_content.is_empty() {
+            return Err(LexerError::InvalidCharacter {
+                ch: '}',
+                line: start_line,
+                column: start_col,
+            });
+        }
+
+        let end_pos = self.position;
+        let span = Span::new(start_pos, end_pos, start_line, start_col);
+
+        Ok(Token::new(
+            TokenKind::Directive(directive_content.trim().to_string()),
+            span,
+        ))
+    }
+
+    /// Scan compiler directive: (*$...*)
+    fn scan_directive_paren(&mut self) -> Result<Token, LexerError> {
+        let start_pos = self.position;
+        let start_line = self.line;
+        let start_col = self.column;
+
+        self.advance(); // Skip '('
+        self.advance(); // Skip '*'
+        self.advance(); // Skip '$'
+
+        let mut directive_content = String::new();
+        while !self.is_at_end() {
+            if self.current_char() == '*' && self.peek_char() == Some(')') {
+                self.advance(); // Skip '*'
+                self.advance(); // Skip ')'
+                break;
+            }
+            directive_content.push(self.current_char());
+            self.advance();
+        }
+
+        if directive_content.is_empty() {
+            return Err(LexerError::InvalidCharacter {
+                ch: '*',
+                line: start_line,
+                column: start_col,
+            });
+        }
+
+        let end_pos = self.position;
+        let span = Span::new(start_pos, end_pos, start_line, start_col);
+
+        Ok(Token::new(
+            TokenKind::Directive(directive_content.trim().to_string()),
+            span,
+        ))
     }
 
     /// Scan identifier or keyword

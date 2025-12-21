@@ -16,6 +16,12 @@ impl super::Parser {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::at(0, 1, 1));
 
+        // Collect directives before PROGRAM keyword
+        let mut directives = vec![];
+        while self.check(&TokenKind::Directive(String::new())) {
+            directives.push(self.parse_directive()?);
+        }
+
         // PROGRAM keyword
         self.consume(TokenKind::KwProgram, "PROGRAM")?;
 
@@ -55,8 +61,25 @@ impl super::Parser {
         let span = start_span.merge(block.span());
         Ok(Node::Program(ast::Program {
             name,
+            directives,
             block: Box::new(block),
             span,
+        }))
+    }
+
+    /// Parse a compiler directive
+    fn parse_directive(&mut self) -> ParserResult<Node> {
+        let token = self.consume(TokenKind::Directive(String::new()), "directive")?;
+        let content = match &token.kind {
+            TokenKind::Directive(content) => content.clone(),
+            _ => return Err(ParserError::InvalidSyntax {
+                message: "Expected directive".to_string(),
+                span: token.span,
+            }),
+        };
+        Ok(Node::Directive(ast::Directive {
+            content,
+            span: token.span,
         }))
     }
 
@@ -67,6 +90,7 @@ impl super::Parser {
             .map(|t| t.span)
             .unwrap_or_else(|| Span::at(0, 1, 1));
 
+        let mut directives = vec![];
         let mut label_decls = vec![];
         let mut const_decls = vec![];
         let mut type_decls = vec![];
@@ -76,8 +100,13 @@ impl super::Parser {
         let mut func_decls = vec![];
         let mut operator_decls = vec![];
 
-        // Parse declarations (label, const, resourcestring, type, var, threadvar, procedures, functions, operators)
+        // Parse declarations (directives, label, const, resourcestring, type, var, threadvar, procedures, functions, operators)
         loop {
+            // Check for directives first
+            if self.check(&TokenKind::Directive(String::new())) {
+                directives.push(self.parse_directive()?);
+                continue;
+            }
             if self.check(&TokenKind::KwLabel) {
                 label_decls.extend(self.parse_label_decls()?);
             } else if self.check(&TokenKind::KwConst) {
@@ -120,6 +149,7 @@ impl super::Parser {
         let span = start_span.merge(end_token.span);
 
         Ok(Node::Block(ast::Block {
+            directives,
             label_decls,
             const_decls,
             type_decls,
@@ -435,6 +465,7 @@ impl super::Parser {
 
         // Create an empty block for forward declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -485,6 +516,7 @@ impl super::Parser {
 
         // Create an empty block for forward declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -649,6 +681,7 @@ impl super::Parser {
 
         // Create empty block for forward/external declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -814,6 +847,7 @@ impl super::Parser {
 
         // Create empty block for forward/external declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -1024,6 +1058,7 @@ impl super::Parser {
 
         // Create empty block for forward/external declarations
         let empty_block = Node::Block(ast::Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],

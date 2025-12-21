@@ -111,6 +111,7 @@ mod tests {
 
         // Create a simple program: program Test; begin end.
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -124,6 +125,7 @@ mod tests {
         });
 
         let program = Node::Program(Program {
+            directives: vec![],
             name: "Test".to_string(),
             block: Box::new(block),
             span,
@@ -289,6 +291,7 @@ mod tests {
         // Test via analyze() - should only analyze then branch (constant folding)
         let mut analyzer = SemanticAnalyzer::new(Some("test.pas".to_string()));
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -301,6 +304,7 @@ mod tests {
             span,
         });
         let program = Node::Program(Program {
+            directives: vec![],
             name: "Test".to_string(),
             block: Box::new(block),
             span,
@@ -350,6 +354,7 @@ mod tests {
         analyzer.core.symbol_table.insert(var_symbol).unwrap();
         
         let block = Node::Block(Block {
+            directives: vec![],
             label_decls: vec![],
             const_decls: vec![],
             type_decls: vec![],
@@ -362,6 +367,7 @@ mod tests {
             span,
         });
         let program = Node::Program(Program {
+            directives: vec![],
             name: "Test".to_string(),
             block: Box::new(block),
             span,

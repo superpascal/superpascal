@@ -35,9 +35,16 @@ impl super::Parser {
 
     /// Check if current token matches a kind
     pub(super) fn check(&self, kind: &TokenKind) -> bool {
-        self.current()
-            .map(|t| &t.kind == kind)
-            .unwrap_or(false)
+        // Special handling for Identifier and Directive - match any identifier/directive
+        if matches!(kind, TokenKind::Identifier(_)) {
+            matches!(self.current().map(|t| &t.kind), Some(TokenKind::Identifier(_)))
+        } else if matches!(kind, TokenKind::Directive(_)) {
+            matches!(self.current().map(|t| &t.kind), Some(TokenKind::Directive(_)))
+        } else {
+            self.current()
+                .map(|t| &t.kind == kind)
+                .unwrap_or(false)
+        }
     }
 
     /// Check if peek token matches a kind
@@ -49,9 +56,11 @@ impl super::Parser {
 
     /// Consume current token if it matches, otherwise error
     pub(super) fn consume(&mut self, kind: TokenKind, expected: &str) -> ParserResult<Token> {
-        // Special handling for Identifier - match any identifier
+        // Special handling for Identifier and Directive - match any identifier/directive
         let matches = if matches!(kind, TokenKind::Identifier(_)) {
             matches!(self.current().map(|t| &t.kind), Some(TokenKind::Identifier(_)))
+        } else if matches!(kind, TokenKind::Directive(_)) {
+            matches!(self.current().map(|t| &t.kind), Some(TokenKind::Directive(_)))
         } else {
             self.check(&kind)
         };

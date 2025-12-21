@@ -1542,7 +1542,7 @@ mod tests {
         let source = r#"
             program Test;
             type
-                StaticArray = array[0..9] of integer;
+                StaticArray = array[integer] of integer;
                 DynamicArray = array of integer;
             begin
             end.
