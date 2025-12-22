@@ -141,6 +141,9 @@ impl super::Parser {
                 variant,
                 span,
             }))
+        } else if self.check(&TokenKind::KwObject) {
+            // Old-style object: object ... end (Turbo Pascal-style)
+            self.parse_object_type()
         } else if self.check(&TokenKind::KwClass) {
             // Class parsing is in classes.rs
             self.parse_class_type()
@@ -869,6 +872,166 @@ impl super::Parser {
             helper_kind,
             base_helpers,
             target_type,
+            members,
+            span,
+        }))
+    }
+
+    /// Parse old-style object type: OBJECT [ ( base_objects ) ] [ members ] END
+    /// Old-style objects are value types (like records) but can have methods and inheritance
+    pub(super) fn parse_object_type(&mut self) -> ParserResult<Node> {
+        let start_span = self
+            .current()
+            .map(|t| t.span)
+            .unwrap_or_else(|| Span::at(0, 1, 1));
+
+        self.consume(TokenKind::KwObject, "OBJECT")?;
+
+        // Check for forward declaration: object;
+        if self.check(&TokenKind::Semicolon) {
+            self.advance()?;
+            let span = start_span;
+            return Ok(Node::ObjectType(ast::ObjectType {
+                base_objects: vec![],
+                is_forward_decl: true,
+                members: vec![],
+                span,
+            }));
+        }
+
+        // Parse base objects (inheritance): ( BaseObject1, BaseObject2 )
+        let mut base_objects = vec![];
+        if self.check(&TokenKind::LeftParen) {
+            self.advance()?; // consume (
+            loop {
+                let base_token = self.consume(TokenKind::Identifier(String::new()), "base object name")?;
+                let base_name = match &base_token.kind {
+                    TokenKind::Identifier(name) => name.clone(),
+                    _ => return Err(ParserError::InvalidSyntax {
+                        message: "Expected identifier for base object".to_string(),
+                        span: base_token.span,
+                    }),
+                };
+                base_objects.push(base_name);
+
+                if !self.check(&TokenKind::Comma) {
+                    break;
+                }
+                self.advance()?; // consume comma
+            }
+            self.consume(TokenKind::RightParen, ")")?;
+        }
+
+        // Check if it's just "object" with no members
+        if self.check(&TokenKind::KwEnd) {
+            let end_token = self.consume(TokenKind::KwEnd, "END")?;
+            let span = start_span.merge(end_token.span);
+            return Ok(Node::ObjectType(ast::ObjectType {
+                base_objects,
+                is_forward_decl: false,
+                members: vec![],
+                span,
+            }));
+        }
+
+        // Parse object members (similar to class members, but simpler - no constructors/destructors)
+        let mut members = vec![];
+        let mut current_visibility = ast::Visibility::Default;
+
+        while !self.check(&TokenKind::KwEnd) {
+            // Check for visibility specifiers
+            if self.check(&TokenKind::KwPrivate) {
+                self.advance()?;
+                current_visibility = ast::Visibility::Private;
+                continue;
+            } else if self.check(&TokenKind::KwProtected) {
+                self.advance()?;
+                current_visibility = ast::Visibility::Protected;
+                continue;
+            } else if self.check(&TokenKind::KwPublic) {
+                self.advance()?;
+                current_visibility = ast::Visibility::Public;
+                continue;
+            } else if self.check(&TokenKind::KwPublished) {
+                self.advance()?;
+                current_visibility = ast::Visibility::Published;
+                continue;
+            } else if self.check(&TokenKind::KwStrict) {
+                self.advance()?;
+                if self.check(&TokenKind::KwPrivate) {
+                    self.advance()?;
+                    current_visibility = ast::Visibility::StrictPrivate;
+                } else if self.check(&TokenKind::KwProtected) {
+                    self.advance()?;
+                    current_visibility = ast::Visibility::StrictProtected;
+                }
+                continue;
+            }
+
+            // Parse members
+            if self.check(&TokenKind::KwType) {
+                // Nested type declarations
+                let type_decls = self.parse_type_decls()?;
+                for decl in type_decls {
+                    members.push((current_visibility, ast::ClassMember::Type(decl)));
+                }
+            } else if self.check(&TokenKind::KwVar) {
+                // Field declarations (with VAR keyword)
+                let var_decls = self.parse_var_decls_with_class_flag(false)?;
+                for decl in var_decls {
+                    members.push((current_visibility, ast::ClassMember::Field(decl)));
+                }
+            } else if matches!(self.current().map(|t| &t.kind), Some(TokenKind::Identifier(_))) {
+                // Field declaration without VAR keyword: identifier_list : type ;
+                // Check if it's a field by looking for colon after identifier(s)
+                let saved_current = self.current().cloned();
+                let saved_peek = self.peek.clone();
+                
+                // Try parsing as field declaration
+                match self.parse_field_decl() {
+                    Ok(field_decl) => {
+                        // parse_field_decl returns FieldDecl struct directly
+                        let var_decl = Node::VarDecl(ast::VarDecl {
+                            names: field_decl.names,
+                            type_expr: field_decl.type_expr,
+                            absolute_address: None,
+                            is_class_var: false, // Field declarations are instance variables
+                            span: field_decl.span,
+                        });
+                        members.push((current_visibility, ast::ClassMember::Field(var_decl)));
+                        self.consume(TokenKind::Semicolon, ";")?;
+                    }
+                    Err(_) => {
+                        // Not a field - restore and break
+                        self.current = saved_current;
+                        self.peek = saved_peek;
+                        break;
+                    }
+                }
+            } else if self.check(&TokenKind::KwProcedure) {
+                // Method (procedure)
+                let proc = self.parse_procedure_decl_in_class()?;
+                members.push((current_visibility, ast::ClassMember::Method(proc)));
+            } else if self.check(&TokenKind::KwFunction) {
+                // Method (function)
+                let func = self.parse_function_decl_in_class()?;
+                members.push((current_visibility, ast::ClassMember::Method(func)));
+            } else if self.check(&TokenKind::KwProperty) {
+                // Property
+                let prop = super::properties::parse_property_decl(self)?;
+                members.push((current_visibility, ast::ClassMember::Property(prop)));
+            } else {
+                // Unknown member - break and let caller handle
+                break;
+            }
+        }
+
+        let end_token = self.consume(TokenKind::KwEnd, "END")?;
+        let span = start_span.merge(end_token.span);
+
+        Ok(Node::ObjectType(ast::ObjectType {
+            base_objects,
+            is_forward_decl: false,
             members,
             span,
         }))
@@ -2496,6 +2659,139 @@ mod tests {
                             .any(|(_, member)| matches!(member, ast::ClassMember::Method(_)));
                         assert!(has_property, "Expected property in helper");
                         assert!(has_method, "Expected method in helper");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_old_style_object() {
+        let source = r#"
+            program Test;
+            type
+                TMyObject = object
+                    x: integer;
+                    procedure DoSomething;
+                end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    assert_eq!(type_decl.name, "TMyObject");
+                    if let Node::ObjectType(obj) = type_decl.type_expr.as_ref() {
+                        assert!(!obj.is_forward_decl);
+                        assert_eq!(obj.members.len(), 2); // field + method
+                    } else {
+                        panic!("Expected ObjectType, got: {:?}", type_decl.type_expr);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_old_style_object_with_inheritance() {
+        let source = r#"
+            program Test;
+            type
+                TBaseObject = object
+                    x: integer;
+                end;
+                TDerivedObject = object(TBaseObject)
+                    y: integer;
+                    procedure DoSomething;
+                end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[1] {
+                    assert_eq!(type_decl.name, "TDerivedObject");
+                    if let Node::ObjectType(obj) = type_decl.type_expr.as_ref() {
+                        assert_eq!(obj.base_objects.len(), 1);
+                        assert_eq!(obj.base_objects[0], "TBaseObject");
+                        assert_eq!(obj.members.len(), 2); // field + method
+                    } else {
+                        panic!("Expected ObjectType");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_old_style_object_forward_decl() {
+        let source = r#"
+            program Test;
+            type
+                TMyObject = object;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    match type_decl.type_expr.as_ref() {
+                        Node::ObjectType(obj) => {
+                            assert!(obj.is_forward_decl);
+                            assert_eq!(obj.members.len(), 0);
+                        }
+                        other => {
+                            panic!("Expected ObjectType, got: {:?}", other);
+                        }
+                    }
+                } else {
+                    panic!("Expected TypeDecl");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_old_style_object_with_properties() {
+        let source = r#"
+            program Test;
+            type
+                TMyObject = object
+                    FValue: integer;
+                    property Value: integer read FValue write FValue;
+                    procedure SetValue(v: integer);
+                end;
+            begin
+            end.
+        "#;
+        let mut parser = Parser::new(source).unwrap();
+        let result = parser.parse();
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+        
+        if let Ok(Node::Program(program)) = result {
+            if let Node::Block(block) = program.block.as_ref() {
+                if let Node::TypeDecl(type_decl) = &block.type_decls[0] {
+                    if let Node::ObjectType(obj) = type_decl.type_expr.as_ref() {
+                        // Should have field, property, and method (3 members)
+                        assert!(obj.members.len() >= 2, "Expected at least property and method, got {}", obj.members.len());
+                        let has_property = obj.members.iter()
+                            .any(|(_, member)| matches!(member, ast::ClassMember::Property(_)));
+                        let has_method = obj.members.iter()
+                            .any(|(_, member)| matches!(member, ast::ClassMember::Method(_)));
+                        assert!(has_property, "Expected property in object");
+                        assert!(has_method, "Expected method in object");
                     }
                 }
             }

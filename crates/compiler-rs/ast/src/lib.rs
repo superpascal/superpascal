@@ -72,6 +72,7 @@ pub enum Node {
     InterfaceType(InterfaceType),
     EnumType(EnumType),
     HelperType(HelperType),  // Class/Record helper: class helper for Type
+    ObjectType(ObjectType),  // Old-style object (Turbo Pascal): object ... end
     
     // ===== Set Literals =====
     SetLiteral(SetLiteral),
@@ -770,6 +771,15 @@ pub enum HelperKind {
     Type,    // type helper
 }
 
+/// Old-style object type (Turbo Pascal-style: value type with methods)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectType {
+    pub base_objects: Vec<String>,  // Parent objects (inheritance)
+    pub is_forward_decl: bool,      // Forward declaration (object;)
+    pub members: Vec<(Visibility, ClassMember)>, // Object members with visibility
+    pub span: Span,
+}
+
 // ===== Helper Methods =====
 
 impl Node {
@@ -830,6 +840,7 @@ impl Node {
             Node::InterfaceType(i) => i.span,
             Node::EnumType(e) => e.span,
             Node::HelperType(h) => h.span,
+            Node::ObjectType(o) => o.span,
             Node::EnumLiteralExpr(e) => e.span,
             Node::SetLiteral(s) => s.span,
             Node::Directive(d) => d.span,

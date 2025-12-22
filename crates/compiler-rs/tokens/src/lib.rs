@@ -562,6 +562,7 @@ pub fn lookup_keyword(s: &str) -> Option<TokenKind> {
     if eq_ignore_ascii_case(s, "using") { return Some(TokenKind::KwUsing); }
     // Tier 3: Object Pascal
     if eq_ignore_ascii_case(s, "class") { return Some(TokenKind::KwClass); }
+    if eq_ignore_ascii_case(s, "object") { return Some(TokenKind::KwObject); }
     if eq_ignore_ascii_case(s, "constructor") { return Some(TokenKind::KwConstructor); }
     if eq_ignore_ascii_case(s, "destructor") { return Some(TokenKind::KwDestructor); }
     if eq_ignore_ascii_case(s, "override") { return Some(TokenKind::KwOverride); }
