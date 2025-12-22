@@ -233,6 +233,138 @@ impl IRBuilder {
     pub fn into_program(self) -> Program {
         self.program
     }
+
+    // ===== Variant Runtime Support =====
+    // These helper functions generate IR calls to Variant runtime functions
+    // They will be used when AST to IR conversion is implemented
+
+    /// Generate IR for Variant assignment: variant := value
+    /// This generates a call to variant_assign runtime function
+    /// Parameters: variant_ptr (pointer to Variant), type_id (VariantType enum value), value (the value to assign)
+    pub fn generate_variant_assign(&mut self, variant_ptr: Value, type_id: Value, value: Value) -> Instruction {
+        // CALL variant_assign(variant_ptr, type_id, value)
+        // Note: In actual implementation, parameters would be pushed on stack or passed in registers
+        Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_assign".to_string()),
+                variant_ptr,
+                type_id,
+                value,
+            ],
+        )
+    }
+
+    /// Generate IR for Variant copy: dest := src
+    /// This generates a call to variant_copy runtime function
+    pub fn generate_variant_copy(&mut self, dest_ptr: Value, src_ptr: Value) -> Instruction {
+        // CALL variant_copy, dest_ptr, src_ptr
+        Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_copy".to_string()),
+                dest_ptr,
+                src_ptr,
+            ],
+        )
+    }
+
+    /// Generate IR for Variant type check: variant_is_type(variant_ptr, type_id)
+    /// Returns a temporary value with the boolean result
+    pub fn generate_variant_is_type(&mut self, variant_ptr: Value, type_id: Value) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_is_type, variant_ptr, type_id -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_is_type".to_string()),
+                variant_ptr,
+                type_id,
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
+
+    /// Generate IR for Variant to integer conversion: variant_to_integer(variant_ptr)
+    /// Returns a temporary value with the integer result
+    pub fn generate_variant_to_integer(&mut self, variant_ptr: Value) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_to_integer, variant_ptr -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_to_integer".to_string()),
+                variant_ptr,
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
+
+    /// Generate IR for Variant to string conversion: variant_to_string(variant_ptr)
+    /// Returns a temporary value with the string pointer result
+    pub fn generate_variant_to_string(&mut self, variant_ptr: Value) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_to_string, variant_ptr -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_to_string".to_string()),
+                variant_ptr,
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
+
+    /// Generate IR for creating a new Variant: variant_new(type_id, value)
+    /// Returns a temporary value with the Variant pointer result
+    pub fn generate_variant_new(&mut self, type_id: Value, value: Value) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_new, type_id, value -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_new".to_string()),
+                type_id,
+                value,
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
+
+    /// Generate IR for creating an empty Variant: variant_new_empty()
+    /// Returns a temporary value with the Variant pointer result
+    pub fn generate_variant_new_empty(&mut self) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_new_empty -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_new_empty".to_string()),
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
+
+    /// Generate IR for getting Variant type: variant_get_type(variant_ptr)
+    /// Returns a temporary value with the type ID result
+    pub fn generate_variant_get_type(&mut self, variant_ptr: Value) -> (Instruction, Value) {
+        let result_temp = self.new_temp();
+        // CALL variant_get_type, variant_ptr -> result_temp
+        let inst = Instruction::new(
+            Opcode::Call,
+            vec![
+                Value::Label("variant_get_type".to_string()),
+                variant_ptr,
+                result_temp.clone(),
+            ],
+        );
+        (inst, result_temp)
+    }
 }
 
 impl Default for IRBuilder {
@@ -620,5 +752,125 @@ mod tests {
         let program = builder.into_program();
         assert_eq!(program.functions.len(), 2);
         assert_eq!(program.functions[0].blocks[0].instructions.len(), 2);
+    }
+
+    // ===== Variant IR Generation Tests =====
+
+    #[test]
+    fn test_generate_variant_assign() {
+        let mut builder = IRBuilder::new();
+        let variant_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let type_id = Value::Immediate(1); // VariantType::Integer
+        let value = Value::Immediate(42);
+
+        let inst = builder.generate_variant_assign(variant_ptr.clone(), type_id.clone(), value.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 4);
+        assert_eq!(inst.operands[0], Value::Label("variant_assign".to_string()));
+        assert_eq!(inst.operands[1], variant_ptr);
+        assert_eq!(inst.operands[2], type_id);
+        assert_eq!(inst.operands[3], value);
+    }
+
+    #[test]
+    fn test_generate_variant_copy() {
+        let mut builder = IRBuilder::new();
+        let dest_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let src_ptr = Value::Memory { base: "sp".to_string(), offset: -8 };
+
+        let inst = builder.generate_variant_copy(dest_ptr.clone(), src_ptr.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 3);
+        assert_eq!(inst.operands[0], Value::Label("variant_copy".to_string()));
+        assert_eq!(inst.operands[1], dest_ptr);
+        assert_eq!(inst.operands[2], src_ptr);
+    }
+
+    #[test]
+    fn test_generate_variant_new_empty() {
+        let mut builder = IRBuilder::new();
+        let (inst, result) = builder.generate_variant_new_empty();
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 2);
+        assert_eq!(inst.operands[0], Value::Label("variant_new_empty".to_string()));
+        assert_eq!(inst.operands[1], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_variant_new() {
+        let mut builder = IRBuilder::new();
+        let type_id = Value::Immediate(1); // VariantType::Integer
+        let value = Value::Immediate(42);
+        let (inst, result) = builder.generate_variant_new(type_id.clone(), value.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 4);
+        assert_eq!(inst.operands[0], Value::Label("variant_new".to_string()));
+        assert_eq!(inst.operands[1], type_id);
+        assert_eq!(inst.operands[2], value);
+        assert_eq!(inst.operands[3], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_variant_is_type() {
+        let mut builder = IRBuilder::new();
+        let variant_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let type_id = Value::Immediate(1); // VariantType::Integer
+        let (inst, result) = builder.generate_variant_is_type(variant_ptr.clone(), type_id.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 4);
+        assert_eq!(inst.operands[0], Value::Label("variant_is_type".to_string()));
+        assert_eq!(inst.operands[1], variant_ptr);
+        assert_eq!(inst.operands[2], type_id);
+        assert_eq!(inst.operands[3], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_variant_to_integer() {
+        let mut builder = IRBuilder::new();
+        let variant_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let (inst, result) = builder.generate_variant_to_integer(variant_ptr.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 3);
+        assert_eq!(inst.operands[0], Value::Label("variant_to_integer".to_string()));
+        assert_eq!(inst.operands[1], variant_ptr);
+        assert_eq!(inst.operands[2], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_variant_to_string() {
+        let mut builder = IRBuilder::new();
+        let variant_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let (inst, result) = builder.generate_variant_to_string(variant_ptr.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 3);
+        assert_eq!(inst.operands[0], Value::Label("variant_to_string".to_string()));
+        assert_eq!(inst.operands[1], variant_ptr);
+        assert_eq!(inst.operands[2], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_variant_get_type() {
+        let mut builder = IRBuilder::new();
+        let variant_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let (inst, result) = builder.generate_variant_get_type(variant_ptr.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 3);
+        assert_eq!(inst.operands[0], Value::Label("variant_get_type".to_string()));
+        assert_eq!(inst.operands[1], variant_ptr);
+        assert_eq!(inst.operands[2], result);
+        assert_eq!(result, Value::Temp(0));
     }
 }
