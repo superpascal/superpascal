@@ -1,7 +1,7 @@
 //! Expression analysis (binary, unary, literals, identifiers, calls, etc.)
 
 use ast::Node;
-use symbols::SymbolKind;
+use symbols::{Symbol, SymbolKind};
 use ::types::Type;
 use crate::SemanticAnalyzer;
 use crate::core;
@@ -249,6 +249,79 @@ impl SemanticAnalyzer {
                 // For now, return error type (proper handling would resolve parent method)
                 // This will be handled by semantic analysis of method calls
                 Type::Error // TODO: Proper type resolution for inherited calls
+            }
+            Node::AnonymousFunction(anon_func) => {
+                // Anonymous function: function(params): return_type begin ... end
+                // Analyze parameters
+                let params = self.analyze_params(&anon_func.params);
+                
+                // Analyze return type
+                let return_type = self.analyze_type(&anon_func.return_type);
+                
+                // Enter new scope for the anonymous function body
+                self.core.symbol_table.enter_scope();
+                
+                // Add parameters to scope
+                for param in &params {
+                    for name in param.name.split(',').map(|s| s.trim()) {
+                        if !name.is_empty() {
+                            let param_symbol = Symbol {
+                                kind: SymbolKind::Variable {
+                                    name: name.to_string(),
+                                    var_type: param.param_type.clone(),
+                                    span: param.span,
+                                },
+                                scope_level: self.core.symbol_table.scope_level(),
+                            };
+                            let _ = self.core.symbol_table.insert(param_symbol);
+                        }
+                    }
+                }
+                
+                // Analyze the function body
+                self.analyze_block(&anon_func.block);
+                
+                // Exit scope
+                self.core.symbol_table.exit_scope();
+                
+                // For now, return the return type (full implementation would create a procedural type)
+                // TODO: Create proper procedural type representation
+                return_type
+            }
+            Node::AnonymousProcedure(anon_proc) => {
+                // Anonymous procedure: procedure(params) begin ... end
+                // Analyze parameters
+                let params = self.analyze_params(&anon_proc.params);
+                
+                // Enter new scope for the anonymous procedure body
+                self.core.symbol_table.enter_scope();
+                
+                // Add parameters to scope
+                for param in &params {
+                    for name in param.name.split(',').map(|s| s.trim()) {
+                        if !name.is_empty() {
+                            let param_symbol = Symbol {
+                                kind: SymbolKind::Variable {
+                                    name: name.to_string(),
+                                    var_type: param.param_type.clone(),
+                                    span: param.span,
+                                },
+                                scope_level: self.core.symbol_table.scope_level(),
+                            };
+                            let _ = self.core.symbol_table.insert(param_symbol);
+                        }
+                    }
+                }
+                
+                // Analyze the procedure body
+                self.analyze_block(&anon_proc.block);
+                
+                // Exit scope
+                self.core.symbol_table.exit_scope();
+                
+                // Procedures don't return a value, but for expression context we return a placeholder
+                // TODO: Create proper procedural type representation
+                Type::Error // Procedures in expression context need special handling
             }
             _ => {
                 self.core.add_error(
