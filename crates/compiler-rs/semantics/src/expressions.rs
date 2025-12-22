@@ -1,5 +1,6 @@
 //! Expression analysis (binary, unary, literals, identifiers, calls, etc.)
 
+use std::collections::HashSet;
 use ast::Node;
 use symbols::{Symbol, SymbolKind};
 use ::types::Type;
@@ -258,8 +259,13 @@ impl SemanticAnalyzer {
                 // Analyze return type
                 let return_type = self.analyze_type(&anon_func.return_type);
                 
+                // Record the scope level before entering anonymous function scope
+                // This helps us detect captured variables from outer scopes
+                let outer_scope_level = self.core.symbol_table.scope_level();
+                
                 // Enter new scope for the anonymous function body
                 self.core.symbol_table.enter_scope();
+                let anon_scope_level = self.core.symbol_table.scope_level();
                 
                 // Add parameters to scope
                 for param in &params {
@@ -278,11 +284,22 @@ impl SemanticAnalyzer {
                     }
                 }
                 
+                // Detect captured variables: variables from outer scopes referenced in the body
+                // This is done by analyzing identifiers in the body and checking their scope
+                let captured_vars = self.detect_captured_variables(&anon_func.block, outer_scope_level, anon_scope_level);
+                
                 // Analyze the function body
                 self.analyze_block(&anon_func.block);
                 
                 // Exit scope
                 self.core.symbol_table.exit_scope();
+                
+                // TODO: Store captured_vars for later use in code generation
+                // For now, we just detect them (closure capture infrastructure)
+                if !captured_vars.is_empty() {
+                    // Closure capture detected - this information will be used for code generation
+                    // In a full implementation, we would store this in the AST or IR
+                }
                 
                 // For now, return the return type (full implementation would create a procedural type)
                 // TODO: Create proper procedural type representation
@@ -293,8 +310,12 @@ impl SemanticAnalyzer {
                 // Analyze parameters
                 let params = self.analyze_params(&anon_proc.params);
                 
+                // Record the scope level before entering anonymous procedure scope
+                let outer_scope_level = self.core.symbol_table.scope_level();
+                
                 // Enter new scope for the anonymous procedure body
                 self.core.symbol_table.enter_scope();
+                let anon_scope_level = self.core.symbol_table.scope_level();
                 
                 // Add parameters to scope
                 for param in &params {
@@ -313,11 +334,19 @@ impl SemanticAnalyzer {
                     }
                 }
                 
+                // Detect captured variables from outer scopes
+                let captured_vars = self.detect_captured_variables(&anon_proc.block, outer_scope_level, anon_scope_level);
+                
                 // Analyze the procedure body
                 self.analyze_block(&anon_proc.block);
                 
                 // Exit scope
                 self.core.symbol_table.exit_scope();
+                
+                // TODO: Store captured_vars for later use in code generation
+                if !captured_vars.is_empty() {
+                    // Closure capture detected
+                }
                 
                 // Procedures don't return a value, but for expression context we return a placeholder
                 // TODO: Create proper procedural type representation
@@ -329,6 +358,95 @@ impl SemanticAnalyzer {
                     expr.span(),
                 );
                 Type::Error
+            }
+        }
+    }
+
+    /// Detect captured variables in an anonymous function/procedure body
+    /// Returns a list of variable names that are captured from outer scopes
+    fn detect_captured_variables(&self, block: &Node, outer_scope_level: usize, anon_scope_level: usize) -> Vec<String> {
+        let mut captured = HashSet::new();
+        
+        // Recursively find all identifier expressions in the block
+        self.collect_identifiers(block, &mut captured, outer_scope_level, anon_scope_level);
+        
+        captured.into_iter().collect()
+    }
+    
+    /// Recursively collect identifiers that reference outer-scope variables
+    fn collect_identifiers(&self, node: &Node, captured: &mut HashSet<String>, outer_scope_level: usize, anon_scope_level: usize) {
+        match node {
+            Node::IdentExpr(i) => {
+                // Check if this identifier references a variable from an outer scope
+                if let Some(symbol) = self.core.symbol_table.lookup(&i.name) {
+                    // If the symbol is from an outer scope (before the anonymous function scope)
+                    // and it's a variable (not a parameter or local), it's captured
+                    if symbol.scope_level < outer_scope_level {
+                        if let SymbolKind::Variable { .. } = &symbol.kind {
+                            captured.insert(i.name.clone());
+                        }
+                    }
+                }
+            }
+            Node::Block(blk) => {
+                // Recursively check all statements in the block
+                for stmt in &blk.statements {
+                    self.collect_identifiers(stmt, captured, outer_scope_level, anon_scope_level);
+                }
+            }
+            Node::BinaryExpr(bin) => {
+                self.collect_identifiers(&bin.left, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&bin.right, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::UnaryExpr(un) => {
+                self.collect_identifiers(&un.expr, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::AssignStmt(assign) => {
+                self.collect_identifiers(&assign.target, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&assign.value, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::CallExpr(call) => {
+                for arg in &call.args {
+                    self.collect_identifiers(arg, captured, outer_scope_level, anon_scope_level);
+                }
+            }
+            Node::CallStmt(call) => {
+                for arg in &call.args {
+                    self.collect_identifiers(arg, captured, outer_scope_level, anon_scope_level);
+                }
+            }
+            Node::IfStmt(if_stmt) => {
+                self.collect_identifiers(&if_stmt.condition, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&if_stmt.then_block, captured, outer_scope_level, anon_scope_level);
+                if let Some(else_block) = &if_stmt.else_block {
+                    self.collect_identifiers(else_block, captured, outer_scope_level, anon_scope_level);
+                }
+            }
+            Node::WhileStmt(while_stmt) => {
+                self.collect_identifiers(&while_stmt.condition, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&while_stmt.body, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::ForStmt(for_stmt) => {
+                self.collect_identifiers(&for_stmt.start_expr, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&for_stmt.end_expr, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&for_stmt.body, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::RepeatStmt(repeat) => {
+                for stmt in &repeat.statements {
+                    self.collect_identifiers(stmt, captured, outer_scope_level, anon_scope_level);
+                }
+                self.collect_identifiers(&repeat.condition, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::IndexExpr(idx) => {
+                self.collect_identifiers(&idx.array, captured, outer_scope_level, anon_scope_level);
+                self.collect_identifiers(&idx.index, captured, outer_scope_level, anon_scope_level);
+            }
+            Node::FieldExpr(field) => {
+                self.collect_identifiers(&field.record, captured, outer_scope_level, anon_scope_level);
+            }
+            // Add other node types as needed - for now, we handle the most common cases
+            _ => {
+                // For other node types, we don't need to recurse (they don't contain identifiers)
             }
         }
     }
