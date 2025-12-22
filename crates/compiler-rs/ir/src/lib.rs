@@ -1004,4 +1004,117 @@ mod tests {
         assert_eq!(inst.operands[2], result);
         assert_eq!(result, Value::Temp(0));
     }
+
+    // ===== Closure IR Generation Tests =====
+
+    #[test]
+    fn test_generate_closure_new_simple() {
+        let mut builder = IRBuilder::new();
+        let function_id = Value::Label("func_123".to_string());
+        let param_count = Value::Immediate(2);
+        let returns_value = Value::Immediate(1); // true
+        let (inst, result) = builder.generate_closure_new_simple(function_id.clone(), param_count.clone(), returns_value.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 5);
+        assert_eq!(inst.operands[0], Value::Label("closure_new_simple".to_string()));
+        assert_eq!(inst.operands[1], function_id);
+        assert_eq!(inst.operands[2], param_count);
+        assert_eq!(inst.operands[3], returns_value);
+        assert_eq!(inst.operands[4], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_closure_new_with_captures() {
+        let mut builder = IRBuilder::new();
+        let function_id = Value::Label("func_456".to_string());
+        let captured_names = vec![
+            Value::Label("x".to_string()),
+            Value::Label("y".to_string()),
+        ];
+        let captured_values = vec![
+            Value::Immediate(42),
+            Value::Immediate(100),
+        ];
+        let param_count = Value::Immediate(1);
+        let returns_value = Value::Immediate(0); // false
+        let (inst, result) = builder.generate_closure_new(
+            function_id.clone(),
+            captured_names.clone(),
+            captured_values.clone(),
+            param_count.clone(),
+            returns_value.clone(),
+        );
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        // Should have: function_id, count, names..., values..., param_count, returns_value, result
+        assert!(inst.operands.len() >= 7);
+        assert_eq!(inst.operands[0], Value::Label("closure_new".to_string()));
+        assert_eq!(inst.operands[1], function_id);
+        assert_eq!(inst.operands[2], Value::Immediate(2)); // captured count
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_closure_call() {
+        let mut builder = IRBuilder::new();
+        let closure_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let params = vec![
+            Value::Immediate(42),
+            Value::Immediate(100),
+        ];
+        let (inst, result) = builder.generate_closure_call(closure_ptr.clone(), params);
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert!(inst.operands.len() >= 5); // closure_call, closure_ptr, param_count, params..., result
+        assert_eq!(inst.operands[0], Value::Label("closure_call".to_string()));
+        assert_eq!(inst.operands[1], closure_ptr);
+        assert_eq!(inst.operands[2], Value::Immediate(2)); // param count
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_closure_get_captured() {
+        let mut builder = IRBuilder::new();
+        let closure_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let name = Value::Label("x".to_string());
+        let (inst, result) = builder.generate_closure_get_captured(closure_ptr.clone(), name.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 4);
+        assert_eq!(inst.operands[0], Value::Label("closure_get_captured".to_string()));
+        assert_eq!(inst.operands[1], closure_ptr);
+        assert_eq!(inst.operands[2], name);
+        assert_eq!(inst.operands[3], result);
+        assert_eq!(result, Value::Temp(0));
+    }
+
+    #[test]
+    fn test_generate_closure_set_captured() {
+        let mut builder = IRBuilder::new();
+        let closure_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let name = Value::Label("counter".to_string());
+        let value = Value::Immediate(5);
+        let inst = builder.generate_closure_set_captured(closure_ptr.clone(), name.clone(), value.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 4);
+        assert_eq!(inst.operands[0], Value::Label("closure_set_captured".to_string()));
+        assert_eq!(inst.operands[1], closure_ptr);
+        assert_eq!(inst.operands[2], name);
+        assert_eq!(inst.operands[3], value);
+    }
+
+    #[test]
+    fn test_generate_closure_free() {
+        let mut builder = IRBuilder::new();
+        let closure_ptr = Value::Memory { base: "sp".to_string(), offset: -4 };
+        let inst = builder.generate_closure_free(closure_ptr.clone());
+
+        assert_eq!(inst.opcode, Opcode::Call);
+        assert_eq!(inst.operands.len(), 2);
+        assert_eq!(inst.operands[0], Value::Label("closure_free".to_string()));
+        assert_eq!(inst.operands[1], closure_ptr);
+    }
 }
